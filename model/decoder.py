@@ -37,7 +37,7 @@ class MonoDepthDecoder(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
 
     def forward(self, left_image: Tensor, *feature_maps, disp_scale: float = 2.0):
-        x4, f4, f3, f2, f1 = feature_maps
+        f1, f2, f3, f4, x4 = feature_maps
 
         out5, skip5, _ = self.dec5(x4, f4, x4, disp_scale)
 
