@@ -1,0 +1,7 @@
+# Cache and hidden files
+.DS_Store
+__pycache__
+.ipynb_checkpoints
+
+# Large files
+datasets
