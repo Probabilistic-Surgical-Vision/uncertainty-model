@@ -41,7 +41,7 @@ class NodeBlock(nn.Module):
             initial_means = torch.ones(self.numberof_inputs)
             self.mean_weight = nn.Parameter(initial_means)
 
-        if node.type == 0: # If node is an input node
+        if node.type == "input":
             triplet_in_channels = in_channels
             triplet_stride = 2
         else:
