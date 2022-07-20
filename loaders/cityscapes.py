@@ -21,30 +21,30 @@ class CityScapesMultiviewDataset(Dataset):
         if split not in ("train", "val", "test"):
             raise ValueError("Split must be either 'train', 'val' or 'test'.")
 
-        left_image_glob = os.path.join(root, self.LEFT_PATH, split,
-                                       "**", f"*.{self.EXTENSION}")
+        left_glob = os.path.join(root, self.LEFT_PATH, split,
+                                 "**", f"*.{self.EXTENSION}")
 
-        right_image_glob = os.path.join(root, self.RIGHT_PATH, split,
-                                        "**", f"*.{self.EXTENSION}")
+        right_glob = os.path.join(root, self.RIGHT_PATH, split,
+                                  "**", f"*.{self.EXTENSION}")
 
-        left_images = sorted(glob.glob(left_image_glob))[:limit]
-        right_images = sorted(glob.glob(right_image_glob))[:limit]
+        lefts = sorted(glob.glob(left_glob))[:limit]
+        rights = sorted(glob.glob(right_glob))[:limit]
 
-        self.images = tuple(zip(left_images, right_images))
+        self.images = tuple(zip(lefts, rights))
         
         self.transform = transform
 
     def __getitem__(self, idx):
         left_path, right_path = self.images[idx]
 
-        left_image = Image.open(left_path).convert('RGB')
-        right_image = Image.open(right_path).convert('RGB')
+        left = Image.open(left_path).convert('RGB')
+        right = Image.open(right_path).convert('RGB')
 
         if self.transform is not None:
-            left_image = self.transform(left_image)
-            right_image = self.transform(right_image)
+            left = self.transform(left)
+            right = self.transform(right)
            
-        return dict(left=left_image, right=right_image)
+        return left, right
 
     def __len__(self):
         return len(self.images)

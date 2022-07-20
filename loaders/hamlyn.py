@@ -44,7 +44,7 @@ class HamlynMultiviewDataset(Dataset):
             left_image = self.transform(left_image)
             right_image = self.transform(right_image)
            
-        return dict(left=left_image, right=right_image)
+        return left_image, right_image
 
     def __len__(self):
         return len(self.images)
