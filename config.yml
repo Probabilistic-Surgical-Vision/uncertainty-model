@@ -1,46 +1,68 @@
-dataset:
-	type: hamyln
-	path: datasets
-	validation_samples: 1000
-	images:
-		height: 256
-		width: 512
-		channels: 3
-	workers: 8
+encoder:
+  - in_channels: 3
+    out_channels: 32
+    kernel_size: 7
+    nodes: 5
+    load_graph: graphs/nodes_5_seed_42/stage_1.yml
+  - in_channels: 32
+    out_channels: 64
+    kernel_size: 5
+    nodes: 5
+    load_graph: graphs/nodes_5_seed_42/stage_2.yml
+  - in_channels: 64
+    out_channels: 128
+    kernel_size: 3
+    nodes: 5
+    load_graph: graphs/nodes_5_seed_42/stage_3.yml
+  - in_channels: 128
+    out_channels: 256
+    kernel_size: 3
+    nodes: 5
+    load_graph: graphs/nodes_5_seed_42/stage_4.yml
+  - in_channels: 256
+    out_channels: 512
+    kernel_size: 3
+    nodes: 5
+    load_graph: graphs/nodes_5_seed_42/stage_5.yml
 
-model:
-	architecture:
-		encoder:
-			type: mono
-			shared_weights: true
-		decoder:
-			type: seq_mono
-			upsample_type: pixelshuffle
-	attention_heads: 8
-	scaler: 0.3
-	seed: 42
-
-training:
-	cuda: true
-	path: trained
-	epochs: 210
-	batch_size: 8
-	learning_rate:
-		value: 0.0001
-		decay: true
-	momentum:
-		b1: 0.5
-		b2: 0.999
-	augmentations:
-		active: true
-		parameters:
-			gamma:
-				min: 0.8
-				max: 1.2
-			brightness:
-				min: 0.5
-				max: 2.0
-			colour:
-				min: 0.8
-				max: 1.2
-	loss: mono
+decoder:
+  - x1_in_channels: 512
+    x2_in_channels: 256
+    out_channels: 256
+    upsample_channels: 128
+    skip_in_channels: 512
+    skip_out_channels: 512
+    concat_disp: false
+    calculate_disp: false
+  - x1_in_channels: 256
+    x2_in_channels: 128
+    out_channels: 256
+    upsample_channels: 64
+    skip_in_channels: 512
+    skip_out_channels: 256
+    concat_disp: false
+    calculate_disp: true
+  - x1_in_channels: 256
+    x2_in_channels: 64
+    out_channels: 128
+    upsample_channels: 64
+    skip_in_channels: 256
+    skip_out_channels: 128
+    concat_disp: true
+    calculate_disp: true
+  - x1_in_channels: 128
+    x2_in_channels: 32
+    out_channels: 64
+    upsample_channels: 16
+    skip_in_channels: 128
+    skip_out_channels: 64
+    concat_disp: true
+    calculate_disp: true
+  - x1_in_channels: 64
+    x2_in_channels: 3
+    out_channels: 32
+    upsample_channels: 8
+    skip_in_channels: 64
+    skip_out_channels: 32
+    concat_disp: true
+    calculate_disp: true

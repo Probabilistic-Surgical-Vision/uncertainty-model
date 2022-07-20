@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from typing import Optional, Union
 
 from .loss import MonodepthLoss
-from .evaluate import evaluate
+from .evaluate import evaluate_model
 from .utils import adjust_disparity_scale
 
 
@@ -46,14 +46,14 @@ def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
     
     return average_loss_per_image
 
-def train(model: Module, loader: DataLoader, epochs: int,
-          learning_rate: float, scheduler_step_size: int = 15,
-          scheduler_decay_rate: float = 0.1,
-          val_loader: Optional[DataLoader] = None,
-          evaluate_every: Optional[int] = None,
-          save_every: Optional[int] = None,
-          save_path: Optional[str] = None,
-          device: Union[torch.device, str] = "cpu"):
+def train_model(model: Module, loader: DataLoader, epochs: int,
+                learning_rate: float, scheduler_step_size: int = 15,
+                scheduler_decay_rate: float = 0.1,
+                val_loader: Optional[DataLoader] = None,
+                evaluate_every: Optional[int] = None,
+                save_every: Optional[int] = None,
+                save_path: Optional[str] = None,
+                device: Union[torch.device, str] = "cpu"):
     
     optimiser = Adam(model.parameters(), learning_rate)
     scheduler = StepLR(optimiser, scheduler_step_size, scheduler_decay_rate)
@@ -73,8 +73,8 @@ def train(model: Module, loader: DataLoader, epochs: int,
         training_losses.append(loss)
 
         if evaluate_every is not None and i % evaluate_every == 0:
-            loss = evaluate(model, val_loader, loss_function,
-                            scale, device=device)
+            loss = evaluate_model(model, val_loader, loss_function,
+                                  scale, device=device)
 
             validation_losses.append(loss)
         

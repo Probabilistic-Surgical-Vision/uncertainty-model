@@ -11,8 +11,8 @@ from ..graph import Node, get_graph_info
 
 class ConvELUBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int,
-                kernel_size: Union[int, Tuple[int, int]],
-                stride: Union[int, Tuple[int, int]]):
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: Union[int, Tuple[int, int]]):
 
         super().__init__()
 
@@ -42,14 +42,13 @@ class NodeBlock(nn.Module):
             self.mean_weight = nn.Parameter(initial_means)
 
         if node.type == "input":
-            triplet_in_channels = in_channels
-            triplet_stride = 2
+            stride = 2
         else:
-            triplet_in_channels = out_channels
-            triplet_stride = 1
+            in_channels = out_channels
+            stride = 1
 
-        self.convolution = ConvELUBlock(triplet_in_channels, out_channels,
-                                        kernel_size, stride=triplet_stride)
+        self.convolution = ConvELUBlock(in_channels, out_channels,
+                                        kernel_size, stride=stride)
     
     def resize_input(self, input: Tensor, desired_size: Size) -> Tensor:
         _, _, input_h, input_w = input.size()
@@ -100,8 +99,8 @@ class EncoderStage(nn.Module):
         dh = desired_h - output_h
 
         pad_size = [
-            dw // 2, dw - dw // 2,
-            dh // 2, dh - dh // 2
+            dw // 2, dw - (dw // 2),
+            dh // 2, dh - (dh // 2)
         ]
 
         return F.pad(input, pad_size, mode="reflect")

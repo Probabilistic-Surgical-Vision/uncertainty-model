@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-class CityScapesMultiviewDataset(Dataset):
+class CityScapesDataset(Dataset):
 
     LEFT_PATH = "leftImg8bit_sequence"
     RIGHT_PATH = "rightImg8bit_sequence"

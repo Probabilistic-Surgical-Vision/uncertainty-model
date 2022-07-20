@@ -32,7 +32,7 @@ class RandomEncoder(nn.Module):
                                              kernel_size=3, nodes=nodes,
                                              stage=4, load_graph=load_graph)
 
-        self.enc4 = self.build_encoder_stage(in_channels=256, out_channels=512,
+        self.enc5 = self.build_encoder_stage(in_channels=256, out_channels=512,
                                              kernel_size=3, nodes=nodes,
                                              stage=5, load_graph=load_graph)
     
@@ -44,14 +44,14 @@ class RandomEncoder(nn.Module):
                             kernel_size: Union[int, Tuple[int, int]],
                             stage: int, heads: int, nodes: int = 5,
                             p: float = 0.75, k: int = 0.5,
-                            random_seed: Optional[int] = None,
+                            seed: Optional[int] = None,
                             load_graph: Optional[str] = None,
                             save_graph: Optional[str] = None) -> Sequential:
 
         if load_graph is not None:
             graph = g.load_graph(load_graph)
         else:
-            graph = g.build_graph(nodes, k, p, seed=(stage*random_seed))
+            graph = g.build_graph(nodes, k, p, seed=(stage*seed))
             
             if save_graph is not None:
                 g.save_graph(graph, save_graph)
@@ -67,5 +67,6 @@ class RandomEncoder(nn.Module):
         x2 = self.enc2(x1)
         x3 = self.enc3(x2)
         x4 = self.enc4(x3)
+        x5 = self.enc5(x4)
 
-        return x, x1, x2, x3, x4
+        return x1, x2, x3, x4, x5

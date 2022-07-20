@@ -1,0 +1,46 @@
+dataset:
+	type: hamyln
+	path: datasets
+	validation_samples: 1000
+	images:
+		height: 256
+		width: 512
+		channels: 3
+	workers: 8
+
+model:
+	architecture:
+		encoder:
+			type: mono
+			shared_weights: true
+		decoder:
+			type: seq_mono
+			upsample_type: pixelshuffle
+	attention_heads: 8
+	scaler: 0.3
+	seed: 42
+
+training:
+	cuda: true
+	path: trained
+	epochs: 210
+	batch_size: 8
+	learning_rate:
+		value: 0.0001
+		decay: true
+	momentum:
+		b1: 0.5
+		b2: 0.999
+	augmentations:
+		active: true
+		parameters:
+			gamma:
+				min: 0.8
+				max: 1.2
+			brightness:
+				min: 0.5
+				max: 2.0
+			colour:
+				min: 0.8
+				max: 1.2
+	loss: mono

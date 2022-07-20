@@ -8,21 +8,7 @@ def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
                            max_scale: float = 1.0) -> float:
 
     scale = (epoch * alpha) + beta
-
     return np.clip(scale, min_scale, max_scale)
-
-"""
-def adjust_disp_scaling(epoch: int, min_scaler: float = 0.3) -> float:
-    if epoch <= 15:
-        scaler = min_scaler
-    elif epoch > 15 and epoch <= 30:
-        scaler = 0.5
-    elif epoch > 30 and epoch <= 40:
-        scaler = 0.7
-    elif epoch > 40:
-        scaler = 1.0
-    return scaler
-"""
 
 def post_process_disparity(disparity: ndarray, alpha: float = 20,
                            beta: float = 0.05) -> ndarray:
