@@ -4,9 +4,9 @@ Original Paper: [https://www.tandfonline.com/doi/full/10.1080/21681163.2021.1997
 
 ## To-do List
 
-- [ ] Copy over all code relating to the best Tukra et al. model
-- [ ] Reduce args object to independent arguments.
+- [x] Copy over all code relating to the best Tukra et al. model
+- [x] Reduce args object to independent arguments.
 - [ ] Create YAML file of all training/dataset/model/evaluation arguments.
-- [ ] Remove any unnecessary conditionals and checks in code.
-- [ ] Combine similar blocks together in code.
+- [x] Remove any unnecessary conditionals and checks in code.
+- [x] Combine similar blocks together in code.
 - [ ] Comment all classes and methods.
