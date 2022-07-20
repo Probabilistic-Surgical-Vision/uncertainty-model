@@ -7,7 +7,7 @@ from .encoder import RandomEncoder
 from .decoder import MonoDepthDecoder
 
 
-class MonoRandNNmodel(nn.Module):
+class RandomlyConnectedModel(nn.Module):
     def __init__(self, nodes: Optional[int] = None,
                  load_graph: Optional[str] = None):
 

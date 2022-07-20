@@ -26,11 +26,12 @@ def get_graph_info(graph: Graph) -> Tuple[List[Node], List[int], List[int]]:
 
     return nodes, inputs, outputs
 
-def build_graph(nodes: int, k: float, p: float, seed: Optional[int] = None):
+def build_graph(nodes: int, k: float, p: float,
+                seed: Optional[int] = None) -> Graph:
     return nx.connected_watts_strogatz_graph(nodes, k, p, seed=seed)
 
-def save_graph(graph, path):
+def save_graph(graph: Graph, path: str):
     nx.write_yaml(graph, path)
 
-def load_graph(path):
+def load_graph(path: str) -> Graph:
     return nx.read_yaml(path)
