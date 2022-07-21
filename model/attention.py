@@ -1,15 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch import Tensor
 
 
 class EfficientAttention(nn.Module):
-    """Based off:
 
-    https://github.com/cmsflash/efficient-attention/blob/master/efficient_attention.py
-    """
     def __init__(self, image_channels: int, key_channels: int,
                  value_channels: int, head_size: int) -> None:
 
@@ -36,8 +32,8 @@ class EfficientAttention(nn.Module):
         keys = self.keys(x).reshape(-1, self.key_channels, image_size)
         queries = self.queries(x).reshape(-1, self.key_channels, image_size)
         values = self.values(x).reshape(-1, self.value_channels, image_size)
-        
-        attended_values = list()
+
+        attended_values = []
 
         for i in range(self.head_size):
             key_head_start = i * self.key_channels_per_head
@@ -55,8 +51,8 @@ class EfficientAttention(nn.Module):
 
             context = key @ value.transpose(1, 2)
 
-            attended_value = context.transpose(1, 2) @ query
-            attended_value = attended_value.reshape(-1, self.value_channels_per_head, height, width)
+            attended_value = (context.transpose(1, 2) @ query) \
+                .reshape(-1, self.value_channels_per_head, height, width)
 
             attended_values.append(attended_value)
 
