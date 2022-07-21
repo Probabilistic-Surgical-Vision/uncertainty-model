@@ -24,6 +24,10 @@ class MonodepthLoss(nn.Module):
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
 
+        self.repr_loss = 0
+        self.con_loss = 0
+        self.smooth_loss = 0
+
         self.disparities = []
         self.reconstructions = []
 
@@ -53,7 +57,7 @@ class MonodepthLoss(nn.Module):
         x = F.pad(x, (0, 0, 0, 1), mode='replicate')
         return x[:, :, :-1, :] - x[:, :, 1:, :]
 
-    def apply_disparity(self, x: Tensor, disparity: Tensor) -> Tensor:
+    def apply_disparity(self, x: Tensor, disparity: Tensor):
         batch_size, _, height, width = x.size()
 
         # Original coordinates of pixels
@@ -73,8 +77,10 @@ class MonodepthLoss(nn.Module):
         flow_field = torch.stack((x_base + x_shifts, y_base), dim=3)
         flow_field = (2 * flow_field) - 1
 
-        return F.grid_sample(x, flow_field, mode='bilinear',
-                             padding_mode='zeros')
+        output = F.grid_sample(x, flow_field, mode='bilinear',
+                               padding_mode='zeros')
+
+        return output
 
     def reconstruct_left(self, right: Tensor, disparity: Tensor) -> Tensor:
         return self.apply_disparity(right, -disparity)
@@ -82,7 +88,7 @@ class MonodepthLoss(nn.Module):
     def reconstuct_right(self, left: Tensor, disparity: Tensor) -> Tensor:
         return self.apply_disparity(left, disparity)
 
-    def l1(self, x: Tensor, y: Tensor) -> Tensor:
+    def l1_loss(self, x: Tensor, y: Tensor) -> Tensor:
         return (x - y).abs().mean()
 
     def ssim(self, x: Tensor, y: Tensor, k1: float = 0.01,
@@ -111,10 +117,15 @@ class MonodepthLoss(nn.Module):
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
         return (1 - self.ssim(x, y)) / 2
 
-    def smoothness_weights(self, x: Tensor) -> Tensor:
-        return torch.exp(-x.abs().mean(dim=1, keepdim=True))
+    def consistency_loss(self, disparity: Tensor,
+                         lr_disparity: Tensor) -> Tensor:
 
-    def smoothness(self, disparity: Tensor, image: Tensor) -> Tensor:
+        return self.l1_loss(disparity, lr_disparity)
+
+    def smoothness_weights(self, image_gradient: Tensor) -> Tensor:
+        return torch.exp(-image_gradient.abs().mean(dim=1, keepdim=True))
+
+    def smoothness_loss(self, disparity: Tensor, image: Tensor) -> Tensor:
         disp_grad_x = self.gradient_x(disparity)
         disp_grad_y = self.gradient_y(disparity)
 
@@ -130,45 +141,59 @@ class MonodepthLoss(nn.Module):
         return smoothness_x.abs() + smoothness_y.abs()
 
     def total_loss(self, left_image: Tensor, right_image: Tensor,
-                   disparity: Tensor) -> Tuple[4 * (float,)]:
+                   disparity: Tensor) -> Tuple[3 * (float,)]:
 
-        left_disp, right_disp = torch.split(disparity, [1, 1], dim=1)
+        # Split the channels into 4 tensors
+        left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+
         self.disparities.append((left_disp, right_disp))
 
+        # Reconstruct the images using disparity and opposite view
         left_recon = self.reconstruct_left(right_image, left_disp)
         right_recon = self.reconstuct_right(left_image, right_disp)
         self.reconstructions.append((left_recon, right_recon))
 
+        # Reconstruct disparity using disparity and opposite disparity
         left_lr_disp = self.reconstruct_left(right_disp, left_disp)
         right_lr_disp = self.reconstruct_right(left_disp, right_disp)
 
-        l1_loss_left = self.l1(left_recon, left_image)
-        l1_loss_right = self.l1(right_recon, right_image)
+        # Get L1 Loss between reconstructed and original images
+        l1_left_loss = self.l1_loss(left_recon, left_image)
+        l1_right_loss = self.l1_loss(right_recon, right_image)
 
+        # Get SSIM between the reconstructed and original images
         ssim_left_loss = self.dssim(left_recon, left_image)
         ssim_right_loss = self.dssim(right_recon, right_image)
 
-        con_left_loss = self.l1(left_disp, left_lr_disp)
-        con_right_loss = self.l1(right_disp, right_lr_disp)
+        # Combine L1 and SSIM to get Weighted SSIM Metric
+        repr_left_loss = (l1_left_loss * self.l1_weight) \
+            + (ssim_left_loss * self.ssim_weight)
 
+        repr_right_loss = (l1_right_loss * self.l1_weight) \
+            + (ssim_right_loss * self.ssim_weight)
+
+        # Get Consistency Loss
+        con_left_loss = self.l1_loss(left_disp, left_lr_disp)
+        con_right_loss = self.l1_loss(right_disp, right_lr_disp)
+
+        # Get Smoothness Loss
         smooth_left_loss = self.smoothness(left_disp, left_image)
         smooth_right_loss = self.smoothness(right_disp, right_image)
 
-        l1_loss = torch.sum(l1_loss_left + l1_loss_right)
-        ssim_loss = torch.sum(ssim_left_loss + ssim_right_loss)
+        # Sum losses from both views
+        repr_loss = torch.sum(repr_left_loss + repr_right_loss)
         con_loss = torch.sum(con_left_loss + con_right_loss)
         smooth_loss = torch.sum(smooth_left_loss + smooth_right_loss)
 
-        return l1_loss, ssim_loss, con_loss, smooth_loss
+        return repr_loss, con_loss, smooth_loss
 
     def forward(self, left_image: Tensor, right_image: Tensor,
-                disparities: Tuple[Tensor, ...]) -> float:
+                disparities: Tuple[Tensor]) -> float:
 
         left_pyramid = self.scale_pyramid(left_image)
         right_pyramid = self.scale_pyramid(right_image)
 
-        self.l1_loss = 0
-        self.ssim_loss = 0
+        self.repr_loss = 0
         self.con_loss = 0
         self.smooth_loss = 0
 
@@ -178,15 +203,13 @@ class MonodepthLoss(nn.Module):
         scales = zip(left_pyramid, right_pyramid, disparities)
 
         for left, right, disparity in scales:
-            (l1_loss, ssim_loss,
-             con_loss, smooth_loss) = self.total_loss(left, right, disparity)
+            (repr_loss, con_loss,
+             smooth_loss) = self.total_loss(left, right, disparity)
 
-            self.l1_loss += l1_loss
-            self.ssim_loss += ssim_loss
+            self.repr_loss += repr_loss
             self.con_loss += con_loss
             self.smooth_loss += smooth_loss
 
-        return (self.l1_loss * self.l1_weight) \
-            + (self.ssim_loss * self.ssim_weight) \
+        return self.repr_loss \
             + (self.con_loss * self.consistency_weight) \
             + (self.smooth_loss * self.smoothness_weight)

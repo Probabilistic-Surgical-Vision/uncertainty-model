@@ -8,6 +8,7 @@ from .encoder import RandomEncoder
 
 
 class RandomlyConnectedModel(nn.Module):
+
     def __init__(self, nodes: Optional[int] = None,
                  load_graph: Optional[str] = None) -> None:
 
