@@ -1,18 +1,22 @@
+from typing import Tuple, Union
+
+from networkx import Graph
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from torch import Tensor, Size
-from typing import Tuple, Union
-from networkx import Graph
+from torch import Size, Tensor
 
 from ..graph import Node, get_graph_info
 
+KernelSize = Union[int, Tuple[int, int]]
+StrideSize = Union[int, Tuple[int, int]]
+
 
 class ConvELUBlock(nn.Module):
+
     def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: Union[int, Tuple[int, int]],
-                 stride: Union[int, Tuple[int, int]]):
+                 kernel_size: KernelSize, stride: StrideSize):
 
         super().__init__()
 
@@ -24,24 +28,26 @@ class ConvELUBlock(nn.Module):
 
         padding_size = (kernel_size - 1) // 2
         self.padding = tuple([padding_size] * 4)
-        
+
     def forward(self, x: Tensor) -> Tensor:
         x_padded = F.pad(x, self.padding)
         return self.layers(x_padded)
 
+
 class NodeBlock(nn.Module):
+
     def __init__(self, node: Node, in_channels: int, out_channels: int,
-                 kernel_size: Union[int, Tuple[int, int]]):
+                 kernel_size: KernelSize):
 
         super().__init__()
 
         self.numberof_inputs = len(node.inputs)
-        
+
         if self.numberof_inputs > 1:
             initial_means = torch.ones(self.numberof_inputs)
             self.mean_weight = nn.Parameter(initial_means)
 
-        if node.type == "input":
+        if node.type == 'input':
             stride = 2
         else:
             in_channels = out_channels
@@ -49,9 +55,9 @@ class NodeBlock(nn.Module):
 
         self.convolution = ConvELUBlock(in_channels, out_channels,
                                         kernel_size, stride=stride)
-    
-    def resize_input(self, input: Tensor, desired_size: Size) -> Tensor:
-        _, _, input_h, input_w = input.size()
+
+    def resize(self, x: Tensor, desired_size: Size) -> Tensor:
+        _, _, input_h, input_w = x.size()
         _, _, desired_h, desired_w = desired_size
 
         dw = desired_w - input_w
@@ -62,7 +68,7 @@ class NodeBlock(nn.Module):
             dh // 2, dh - dh // 2
         ]
 
-        return F.pad(input, pad_size, mode="reflect")
+        return F.pad(x, pad_size, mode='reflect')
 
     def forward(self, *inputs) -> Tensor:
         if self.numberof_inputs == 1:
@@ -72,27 +78,30 @@ class NodeBlock(nn.Module):
 
             for i, x in enumerate(inputs[1:]):
                 if x.size(2) != out.size(2):
-                    x = self.resize_input(x, out.size())
-                
+                    x = self.resize(x, out.size())
+
                 out += self.sigmoid(self.mean_weight[i]) * x
 
         return self.convolution(out)
 
+
 class EncoderStage(nn.Module):
+
     def __init__(self, graph: Graph, in_channels: int, out_channels: int,
-                kernel_size: Union[int, Tuple[int, int]]):
+                 kernel_size: KernelSize):
+
         super().__init__()
 
         self.nodes, self.in_nodes, self.out_nodes = get_graph_info(graph)
-        
+
         self.node_blocks = nn.ModuleList()
-        
+
         for node in self.nodes:
             block = NodeBlock(node, in_channels, out_channels, kernel_size)
             self.node_blocks.append(block)
-  
-    def resize_output(self, output: Tensor, desired_size: Size) -> Tensor:
-        _, _, output_h, output_w = output.size()
+
+    def resize(self, x: Tensor, desired_size: Size) -> Tensor:
+        _, _, output_h, output_w = x.size()
         _, _, desired_h, desired_w = desired_size
 
         dw = desired_w - output_w
@@ -103,26 +112,26 @@ class EncoderStage(nn.Module):
             dh // 2, dh - (dh // 2)
         ]
 
-        return F.pad(input, pad_size, mode="reflect")
+        return F.pad(x, pad_size, mode='reflect')
 
     def forward(self, x: Tensor) -> Tensor:
-        results = { id:self.node_blocks[id](x) for id in self.in_nodes }
+        results = {idx: self.node_blocks[idx](x) for idx in self.in_nodes}
 
-        for id, node in enumerate(self.nodes):
-            if id in self.in_nodes:
+        for idx, node in enumerate(self.nodes):
+            if idx in self.in_nodes:
                 continue
 
-            inputs = [ results[input_id] for input_id in node.inputs ]
-            results[id] = self.node_blocks[id](*inputs)
-        
-        for i, id in enumerate(self.out_nodes):
+            inputs = [results[input_id] for input_id in node.inputs]
+            results[idx] = self.node_blocks[idx](*inputs)
+
+        for i, idx in enumerate(self.out_nodes):
             if i == 0:
-                out = results[id]
+                out = results[idx]
                 continue
 
-            if out.size(2) != results[id].size(2):
-                results[id] = self.resize_output(results[id], out.size())
-        
-            out += results[id]
+            if out.size(2) != results[idx].size(2):
+                results[idx] = self.resize(results[idx], out.size())
+
+            out += results[idx]
 
         return out / len(self.out_nodes)

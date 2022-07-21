@@ -1,21 +1,21 @@
+from typing import Optional, Tuple
+
 import torch.nn as nn
-
 from torch import Tensor
-from typing import Optional
 
+from .decoder import DepthDecoder
 from .encoder import RandomEncoder
-from .decoder import MonoDepthDecoder
 
 
 class RandomlyConnectedModel(nn.Module):
     def __init__(self, nodes: Optional[int] = None,
-                 load_graph: Optional[str] = None):
+                 load_graph: Optional[str] = None) -> None:
 
         super().__init__()
 
         self.encoder = RandomEncoder(nodes, load_graph)
-        self.decoder = MonoDepthDecoder()
+        self.decoder = DepthDecoder()
 
-    def forward(self, left_image: Tensor, disparity_scale: float):
-        encodings = self.encoder(left_image) 
-        return self.decoder(left_image, encodings, disparity_scale)
+    def forward(self, image: Tensor, scale: float) -> Tuple[Tensor, ...]:
+        encodings = self.encoder(image)
+        return self.decoder(image, encodings, scale)

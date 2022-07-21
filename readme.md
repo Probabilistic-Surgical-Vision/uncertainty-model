@@ -10,3 +10,15 @@ Original Paper: [https://www.tandfonline.com/doi/full/10.1080/21681163.2021.1997
 - [x] Remove any unnecessary conditionals and checks in code.
 - [x] Combine similar blocks together in code.
 - [ ] Comment all classes and methods.
+
+## Notes
+
+Decoder out:
+```
+input is x1, x2, prev_disp, prev_skip
+
+x1_upsampled <- upsample(x1) { upsample_channels <- x1_channels // divisor }
+skip <- se(prev_skip + x1_upsampled) { skip_channels <- prev_skip_channels + x2_channels }
+x_concat <- iconv(x1_upsampled + skip + prev_disp? ) { out_channels <- upsample_channels + skip_channels + disp_channels }
+disp <- disp_conv(x_concat) { disp_channels <- out_channels }
+```

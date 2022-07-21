@@ -1,18 +1,19 @@
-import torch.nn as nn
-
-from torch import Tensor
-from torch.nn import Sequential
 from typing import Optional, Tuple, Union
 
-from . import graph as g
+import torch.nn as nn
+from torch import Tensor
+from torch.nn import Sequential
 
+from . import graph as g
 from .attention import EfficientAttention
 from .layers.encoder import EncoderStage
+
+KernelSize = Union[int, Tuple[int, int]]
 
 
 class RandomEncoder(nn.Module):
     def __init__(self, nodes: Optional[int] = None,
-                 load_graph: Optional[str] = None):
+                 load_graph: Optional[str] = None) -> None:
 
         super().__init__()
 
@@ -25,8 +26,8 @@ class RandomEncoder(nn.Module):
                                              stage=2, load_graph=load_graph)
 
         self.enc3 = self.build_encoder_stage(in_channels=64, out_channels=128,
-                                             kernel_size=3, nodes=nodes, stage=3,
-                                             load_graph=load_graph)
+                                             kernel_size=3, nodes=nodes,
+                                             stage=3, load_graph=load_graph)
 
         self.enc4 = self.build_encoder_stage(in_channels=128, out_channels=256,
                                              kernel_size=3, nodes=nodes,
@@ -35,15 +36,14 @@ class RandomEncoder(nn.Module):
         self.enc5 = self.build_encoder_stage(in_channels=256, out_channels=512,
                                              kernel_size=3, nodes=nodes,
                                              stage=5, load_graph=load_graph)
-    
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
 
     def build_encoder_stage(self, in_channels: int, out_channels: int,
-                            kernel_size: Union[int, Tuple[int, int]],
-                            stage: int, heads: int, nodes: int = 5,
-                            p: float = 0.75, k: int = 0.5,
+                            kernel_size: KernelSize, stage: int, heads: int,
+                            nodes: int = 5, p: float = 0.75, k: int = 0.5,
                             seed: Optional[int] = None,
                             load_graph: Optional[str] = None,
                             save_graph: Optional[str] = None) -> Sequential:
@@ -52,7 +52,7 @@ class RandomEncoder(nn.Module):
             graph = g.load_graph(load_graph)
         else:
             graph = g.build_graph(nodes, k, p, seed=(stage*seed))
-            
+
             if save_graph is not None:
                 g.save_graph(graph, save_graph)
 
@@ -60,8 +60,8 @@ class RandomEncoder(nn.Module):
             EncoderStage(graph, in_channels, out_channels, kernel_size),
             EfficientAttention(out_channels, out_channels, heads, out_channels)
         )
-  
-    def forward(self, x: Tensor):
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, ...]:
 
         x1 = self.enc1(x)
         x2 = self.enc2(x1)

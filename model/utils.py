@@ -1,5 +1,4 @@
 import numpy as np
-
 from numpy import ndarray
 
 
@@ -9,6 +8,7 @@ def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
 
     scale = (epoch * alpha) + beta
     return np.clip(scale, min_scale, max_scale)
+
 
 def post_process_disparity(disparity: ndarray, alpha: float = 20,
                            beta: float = 0.05) -> ndarray:
@@ -30,4 +30,4 @@ def post_process_disparity(disparity: ndarray, alpha: float = 20,
     mean_mask = 1 - (left_mask + right_mask)
 
     return (right_mask * left_disparity) + (left_mask * right_disparity) \
-         + (mean_mask * mean_disparity)
+        + (mean_mask * mean_disparity)

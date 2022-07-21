@@ -2,13 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torch import Tensor
+
 
 class EfficientAttention(nn.Module):
     """Based off:
 
     https://github.com/cmsflash/efficient-attention/blob/master/efficient_attention.py
     """
-    def __init__(self, image_channels, key_channels, value_channels, head_size):
+    def __init__(self, image_channels: int, key_channels: int,
+                 value_channels: int, head_size: int) -> None:
+
         super().__init__()
 
         self.image_channels = image_channels
@@ -25,7 +29,7 @@ class EfficientAttention(nn.Module):
         self.values = nn.Conv2d(image_channels, value_channels, 1)
         self.reprojection = nn.Conv2d(value_channels, image_channels, 1)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         _, _, height, width = x.size()
         image_size = height * width
 

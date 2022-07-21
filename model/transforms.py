@@ -1,16 +1,20 @@
-import torch
+from typing import Tuple
 
+from numpy import float64, ndarray, random
+
+import torch
 from torch import Tensor
+
 from torchvision import transforms
-from numpy import random, ndarray, float64
-from typing import Tuple, Union
 
 TensorTuple = Tuple[Tensor, Tensor]
-BoundsTuple = Tuple[Union[int, float], Union[int, float]]
+BoundsTuple = Tuple[float, float]
+ImageSizeTuple = Tuple[int, int]
 
 
 class ResizeImage:
-    def __init__(self, size: Tuple[int, int] = (256, 512)):
+
+    def __init__(self, size: ImageSizeTuple = (256, 512)) -> None:
         self.transform = transforms.Resize(size)
 
     def __call__(self, images: TensorTuple) -> TensorTuple:
@@ -21,8 +25,10 @@ class ResizeImage:
 
         return left_image, right_image
 
+
 class ToTensor:
-    def __init__(self):
+
+    def __init__(self) -> None:
         self.transform = transforms.ToTensor()
 
     def __call__(self, images: TensorTuple) -> TensorTuple:
@@ -33,8 +39,10 @@ class ToTensor:
 
         return left_image, right_image
 
+
 class RandomFlip:
-    def __init__(self, p: float = 0.5):
+
+    def __init__(self, p: float = 0.5) -> None:
         self.probability = p
         self.transform = transforms.RandomHorizontalFlip(1)
 
@@ -47,10 +55,12 @@ class RandomFlip:
 
         return left_image, right_image
 
+
 class RandomAugment:
+
     def __init__(self, p: float, gamma: BoundsTuple,
-                 brightness: BoundsTuple, colour: BoundsTuple):
-        
+                 brightness: BoundsTuple, colour: BoundsTuple) -> None:
+
         self.probability = p
 
         self.gamma = gamma
@@ -79,11 +89,11 @@ class RandomAugment:
         left_image, right_image = images
 
         if random.random() < self.probability:
-            gamma = random.uniform(*self.gamma)
-            brightness = random.uniform(*self.brightness)
-            colour = random.uniform(*self.colour, 3)
+            g = random.uniform(*self.gamma)
+            b = random.uniform(*self.brightness)
+            c = random.uniform(*self.colour, 3)
 
-            left_image = self.transform(left_image, gamma, brightness, colour)
-            right_image = self.transform(right_image, gamma, brightness, colour)
+            left_image = self.transform(left_image, g, b, c)
+            right_image = self.transform(right_image, g, b, c)
 
         return left_image, right_image

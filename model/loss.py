@@ -1,16 +1,16 @@
+from typing import List, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch import Tensor
-from typing import List, Tuple
 
 
 class MonodepthLoss(nn.Module):
 
     def __init__(self, scales: int = 4, ssim_weight: float = 0.85,
                  smoothness_weight: float = 1.0,
-                 consistency_weight: float = 1.0):
+                 consistency_weight: float = 1.0) -> None:
 
         super().__init__()
 
@@ -24,13 +24,13 @@ class MonodepthLoss(nn.Module):
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
 
-        self.disparities = list()
-        self.reconstructions = list()
+        self.disparities = []
+        self.reconstructions = []
 
     def scale_pyramid(self, x: Tensor, numberof_scales: int) -> List[Tensor]:
         _, _, height, width = x.size()
 
-        pyramid = list()
+        pyramid = []
 
         for i in range(numberof_scales):
             ratio = 2 ** i
@@ -38,44 +38,43 @@ class MonodepthLoss(nn.Module):
             size = (height // ratio, width // ratio)
             x_resized = F.interpolate(x, size=size, mode='bilinear',
                                       align_corners=True)
-            
+
             pyramid.append(x_resized)
-        
+
         return pyramid
 
     def gradient_x(self, x: Tensor) -> Tensor:
         # Pad input to keep output size consistent
-        x = F.pad(x, (0, 1, 0, 0), mode="replicate")
+        x = F.pad(x, (0, 1, 0, 0), mode='replicate')
         return x[:, :, :, :-1] - x[:, :, :, 1:]
 
     def gradient_y(self, x: Tensor) -> Tensor:
         # Pad input to keep output size consistent
-        x = F.pad(x, (0, 0, 0, 1), mode="replicate")
+        x = F.pad(x, (0, 0, 0, 1), mode='replicate')
         return x[:, :, :-1, :] - x[:, :, 1:, :]
 
-    def apply_disparity(self, x: Tensor, disparity: Tensor):
+    def apply_disparity(self, x: Tensor, disparity: Tensor) -> Tensor:
         batch_size, _, height, width = x.size()
 
         # Original coordinates of pixels
         x_base = torch.linspace(0, 1, width) \
             .repeat(batch_size, height, 1) \
-                .type_as(x)
+            .type_as(x)
 
         y_base = torch.linspace(0, 1, height) \
             .repeat(batch_size, width, 1) \
-                .transpose(1, 2) \
-                    .type_as(x)
+            .transpose(1, 2) \
+            .type_as(x)
 
         # Apply shift in X direction
         x_shifts = disparity.squeeze(dim=1)
 
+        # In grid_sample coordinates are assumed to be between -1 and 1
         flow_field = torch.stack((x_base + x_shifts, y_base), dim=3)
-        flow_field = (2 * flow_field) - 1 # In grid_sample coordinates are assumed to be between -1 and 1
+        flow_field = (2 * flow_field) - 1
 
-        output = F.grid_sample(x, flow_field, mode='bilinear',
-                               padding_mode='zeros')
-
-        return output
+        return F.grid_sample(x, flow_field, mode='bilinear',
+                             padding_mode='zeros')
 
     def reconstruct_left(self, right: Tensor, disparity: Tensor) -> Tensor:
         return self.apply_disparity(right, -disparity)
@@ -135,7 +134,7 @@ class MonodepthLoss(nn.Module):
 
         left_disp, right_disp = torch.split(disparity, [1, 1], dim=1)
         self.disparities.append((left_disp, right_disp))
-        
+
         left_recon = self.reconstruct_left(right_image, left_disp)
         right_recon = self.reconstuct_right(left_image, right_disp)
         self.reconstructions.append((left_recon, right_recon))
@@ -163,24 +162,24 @@ class MonodepthLoss(nn.Module):
         return l1_loss, ssim_loss, con_loss, smooth_loss
 
     def forward(self, left_image: Tensor, right_image: Tensor,
-                disparities: Tuple[Tensor]) -> float:
+                disparities: Tuple[Tensor, ...]) -> float:
 
         left_pyramid = self.scale_pyramid(left_image)
         right_pyramid = self.scale_pyramid(right_image)
 
-        self.l1_loss = 0 
+        self.l1_loss = 0
         self.ssim_loss = 0
         self.con_loss = 0
         self.smooth_loss = 0
 
-        self.disparities = list()
-        self.reconstructions = list()
+        self.disparities = []
+        self.reconstructions = []
 
         scales = zip(left_pyramid, right_pyramid, disparities)
 
         for left, right, disparity in scales:
             (l1_loss, ssim_loss,
-            con_loss, smooth_loss) = self.total_loss(left, right, disparity)
+             con_loss, smooth_loss) = self.total_loss(left, right, disparity)
 
             self.l1_loss += l1_loss
             self.ssim_loss += ssim_loss
