@@ -1,4 +1,6 @@
+import os
 import os.path
+from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -33,8 +35,8 @@ def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
     for i, image_pair in enumerate(tepoch):
         optimiser.zero_grad()
 
-        left = image_pair["left"].to(device)
-        right = image_pair["right"].to(device)
+        left = image_pair['left'].to(device)
+        right = image_pair['right'].to(device)
 
         disparities = model(left, disparity_scale)
 
@@ -68,6 +70,13 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
     training_losses = []
     validation_losses = []
 
+    if save_path is not None:
+        date = datetime.now().strftime('%Y%m%d%H%M%S')
+        directory = os.path.join(save_path, f'model_{date}')
+
+        if not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
+
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
 
@@ -84,13 +93,13 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
             validation_losses.append(loss)
 
         if save_every is not None and i % save_every == 0:
-            filepath = os.path.join(save_path, f'model_epoch_{i+1}.pt')
+            filepath = os.path.join(directory, f'epoch_{i+1}.pt')
             torch.save(model.state_dict(), filepath)
 
     print('Training completed.')
 
     if save_path is not None:
-        filepath = os.path.join(save_path, 'model.pt')
+        filepath = os.path.join(directory, 'final.pt')
         torch.save(model.state_dict(), filepath)
 
     return training_losses, validation_losses

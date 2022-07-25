@@ -28,14 +28,23 @@ class CityScapesDataset(Dataset):
         right_glob = os.path.join(root, self.RIGHT_PATH, split,
                                   "**", f"*.{self.EXTENSION}")
 
-        self.lefts = sorted(glob.glob(left_glob))[:limit]
-        self.rights = sorted(glob.glob(right_glob))[:limit]
+        left_images = sorted(glob.glob(left_glob))
+        right_images = sorted(glob.glob(right_glob))
 
-        if len(self.lefts) != len(self.rights):
-            raise Exception(f"Number of left images ({len(self.lefts)}) does "
-                            "not match the number of right images "
-                            f"({len(self.rights)}) in the dataset.")
+        left_names = set(map(os.path.basename, left_images))
+        right_names = set(map(os.path.basename, right_images))
 
+        missing = left_names.symmetric_difference(right_names)
+
+        if len(missing) > 0:
+            print(f'Missing {missing:,} images from the dataset.')
+            left_images = [i for i in left_images if i not in missing]
+            right_images = [i for i in right_images if i not in missing]
+            print(f'Dataset reduced to {len(left_images):,} images.')
+
+        self.lefts = left_images[:limit]
+        self.rights = right_images[:limit]
+        
         self.transform = transform
 
     def __getitem__(self, idx):
