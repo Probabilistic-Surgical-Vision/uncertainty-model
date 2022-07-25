@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+
 class HamlynMultiviewDataset(Dataset):
 
     LEFT_PATH = "image_0"

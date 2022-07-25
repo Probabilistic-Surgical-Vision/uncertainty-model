@@ -43,11 +43,10 @@ class NodeBlock(nn.Module):
 
         self.numberof_inputs = len(node.inputs)
 
-        if self.numberof_inputs > 1:
-            initial_means = torch.ones(self.numberof_inputs)
-            self.mean_weight = nn.Parameter(initial_means)
+        initial_means = torch.ones(self.numberof_inputs)
+        self.mean_weight = nn.Parameter(initial_means)
 
-        if node.type == 'input':
+        if node.node_type == 'input':
             stride = 2
         else:
             in_channels = out_channels
@@ -71,16 +70,16 @@ class NodeBlock(nn.Module):
         return F.pad(x, pad_size, mode='reflect')
 
     def forward(self, *inputs) -> Tensor:
-        if self.numberof_inputs == 1:
-            out = inputs[0]
-        else:
+        if self.numberof_inputs > 1:
             out = torch.sigmoid(self.mean_weight[0]) * inputs[0]
 
             for i, x in enumerate(inputs[1:]):
                 if x.size(2) != out.size(2):
                     x = self.resize(x, out.size())
 
-                out += self.sigmoid(self.mean_weight[i]) * x
+                out += torch.sigmoid(self.mean_weight[i]) * x
+        else:
+            out = inputs[0]
 
         return self.convolution(out)
 

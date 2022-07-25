@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -31,12 +31,15 @@ class MonodepthLoss(nn.Module):
         self.disparities = []
         self.reconstructions = []
 
-    def scale_pyramid(self, x: Tensor, numberof_scales: int) -> List[Tensor]:
+    def scale_pyramid(self, x: Tensor,
+                      scales: Optional[int] = None) -> List[Tensor]:
+
+        scales = self.scales if scales is None else scales
         _, _, height, width = x.size()
 
         pyramid = []
 
-        for i in range(numberof_scales):
+        for i in range(scales):
             ratio = 2 ** i
 
             size = (height // ratio, width // ratio)
@@ -85,7 +88,7 @@ class MonodepthLoss(nn.Module):
     def reconstruct_left(self, right: Tensor, disparity: Tensor) -> Tensor:
         return self.apply_disparity(right, -disparity)
 
-    def reconstuct_right(self, left: Tensor, disparity: Tensor) -> Tensor:
+    def reconstruct_right(self, left: Tensor, disparity: Tensor) -> Tensor:
         return self.apply_disparity(left, disparity)
 
     def l1_loss(self, x: Tensor, y: Tensor) -> Tensor:
@@ -150,7 +153,7 @@ class MonodepthLoss(nn.Module):
 
         # Reconstruct the images using disparity and opposite view
         left_recon = self.reconstruct_left(right_image, left_disp)
-        right_recon = self.reconstuct_right(left_image, right_disp)
+        right_recon = self.reconstruct_right(left_image, right_disp)
         self.reconstructions.append((left_recon, right_recon))
 
         # Reconstruct disparity using disparity and opposite disparity
@@ -173,12 +176,12 @@ class MonodepthLoss(nn.Module):
             + (ssim_right_loss * self.ssim_weight)
 
         # Get Consistency Loss
-        con_left_loss = self.l1_loss(left_disp, left_lr_disp)
-        con_right_loss = self.l1_loss(right_disp, right_lr_disp)
+        con_left_loss = self.consistency_loss(left_disp, left_lr_disp)
+        con_right_loss = self.consistency_loss(right_disp, right_lr_disp)
 
         # Get Smoothness Loss
-        smooth_left_loss = self.smoothness(left_disp, left_image)
-        smooth_right_loss = self.smoothness(right_disp, right_image)
+        smooth_left_loss = self.smoothness_loss(left_disp, left_image)
+        smooth_right_loss = self.smoothness_loss(right_disp, right_image)
 
         # Sum losses from both views
         repr_loss = torch.sum(repr_left_loss + repr_right_loss)

@@ -24,13 +24,16 @@ def create_comparison_image(left: Tensor, right: Tensor,
     left_disp = left_disp_batch[0].detach()
     right_disp = right_disp_batch[0].detach()
 
+    left_disp = torch.cat((left_disp, left_disp, left_disp), dim=0)
+    right_disp = torch.cat((right_disp, right_disp, right_disp), dim=0)
+
     left_recon = left_recon_batch[0].detach()
     right_recon = right_recon_batch[0].detach()
 
-    grid = torch.cat((left, left_disp, left_recon,
-                      right, right_disp, right_recon), dim=0)
+    grid = torch.stack((left[0], left_disp, left_recon,
+                       right[0], right_disp, right_recon), dim=0)
 
-    return make_grid(grid)
+    return make_grid(grid, nrow=3)
 
 
 @torch.no_grad()
@@ -47,15 +50,16 @@ def evaluate_model(model: Module, loader: DataLoader,
 
     tepoch = tqdm.tqdm(loader, 'Evaluation', unit='batch')
 
-    for i, (left, right) in enumerate(tepoch):
-        left, right = left.to(device), right.to(device)
-        disparities = model(left, disparity_scale)
+    for i, image_pair in enumerate(tepoch):
+        left = image_pair["left"].to(device)
+        right = image_pair["right"].to(device)
 
+        disparities = model(left, disparity_scale)
         loss = loss_function(left, right, disparities)
 
         running_loss += loss.item()
 
-        average_loss_per_image = running_loss / (i * batch_size)
+        average_loss_per_image = running_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
         if save_comparison_to is not None and i == 0:

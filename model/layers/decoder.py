@@ -11,30 +11,40 @@ KernelSize = Union[int, Tuple[int, int]]
 class ConvLayer(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
-                 reflection: bool = True, sigmoid: bool = False,
-                 kernel_size: KernelSize = 3):
+                 padding: bool = True, reflection: bool = True,
+                 sigmoid: bool = False, kernel_size: KernelSize = 3):
 
         super().__init__()
 
+        if padding:
+            self.padding = nn.ReflectionPad2d(1) \
+                if reflection else nn.ZeroPad2d(1)
+        else:
+            self.padding = None
+
         self.layers = nn.Sequential(
-            nn.ReflectionPad2d(1) if reflection else nn.ZeroPad2d(1),
             nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size),
             nn.Sigmoid() if sigmoid else nn.Identity()
         )
 
     def forward(self, x: Tensor) -> Tensor:
+        if self.padding is not None:
+            x = self.padding(x)
+
         return self.layers(x)
 
 
 class ConvELUBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: KernelSize = 3, batch_norm: bool = False):
+                 padding: bool = True, kernel_size: KernelSize = 3,
+                 batch_norm: bool = False):
 
         super().__init__()
 
         self.layers = nn.Sequential(
-            ConvLayer(in_channels, out_channels, kernel_size=kernel_size),
+            ConvLayer(in_channels, out_channels, padding=padding,
+                      kernel_size=kernel_size),
             nn.BatchNorm2d(out_channels) if batch_norm else nn.Identity(),
             nn.ELU(inplace=True)
         )
@@ -64,7 +74,7 @@ class SELayer(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor:
         x_squeezed = self.squeeze(x)
 
         if self.fc:
@@ -83,57 +93,62 @@ class DecoderStage(nn.Module):
 
     DecoderOut = Tuple[Tensor, Tensor, Optional[Tensor]]
 
-    def __init__(self, x1_in_channels: int, x2_in_channels: int,
-                 out_channels: int, upsample_channels: int,
-                 skip_in_channels: int, skip_out_channels: int,
-                 disp_in_channels: int = 2, disp_out_channels: int = 2,
-                 batch_norm: bool = True, fc: bool = True, scale: float = 2.0,
-                 concat_disp: bool = True, calculate_disp: bool = True):
+    def __init__(self, in_channels: int, feature_in_channels: int,
+                 skip_in_channels: int, upsample_channels: int,
+                 out_channels: int, skip_out_channels: int,
+                 disp_channels: int = 2, batch_norm: bool = True,
+                 fc: bool = True, scale: int = 2, concat_disp: bool = True,
+                 calculate_disp: bool = True):
+
+        super().__init__()
 
         self.scale = scale
         self.calculate_disp = calculate_disp
         self.concat_disp = concat_disp
 
         self.upsample = nn.Sequential(
-            ConvELUBlock(x1_in_channels, upsample_channels * int(scale ** 2),
+            ConvELUBlock(in_channels, upsample_channels * int(scale ** 2),
                          batch_norm=batch_norm),
             nn.PixelShuffle(upscale_factor=self.scale)
         )
 
         self.squeeze_excite = nn.Sequential(
-            ConvELUBlock(x2_in_channels + skip_in_channels, skip_out_channels,
-                         kernel_size=1, batch_norm=True),
+            ConvELUBlock(feature_in_channels + skip_in_channels,
+                         skip_out_channels, kernel_size=1,
+                         batch_norm=True, padding=False),
             SELayer(channels=skip_out_channels, fc=fc)
         )
 
         iconv_in_channels = upsample_channels + skip_out_channels
-        iconv_in_channels += disp_in_channels if concat_disp else 0
+        iconv_in_channels += disp_channels if concat_disp else 0
 
         self.iconv = ConvELUBlock(iconv_in_channels, out_channels,
                                   batch_norm=batch_norm)
 
-        self.disp_conv = ConvLayer(out_channels, disp_out_channels,
+        self.disp_conv = ConvLayer(out_channels, disp_channels,
                                    sigmoid=True)
 
-    def forward(self, x1: Tensor, x2: Tensor, prev_skip: Tensor,
-                prev_disp: Optional[Tensor] = None,
-                disp_scale: Optional[float] = 1.0) -> DecoderOut:
+    def forward(self, x: Tensor, feature_map: Tensor, skip: Tensor,
+                disparity: Optional[Tensor] = None,
+                scale: Optional[float] = 1.0) -> DecoderOut:
 
-        prev_skip = F.interpolate(prev_skip, scale_factor=self.scale,
-                                  align_corners=True, mode='bilinear')
-        prev_disp = F.interpolate(prev_disp, scale_factor=self.scale,
-                                  align_corners=True, mode='bilinear')
+        skip = F.interpolate(skip, scale_factor=self.scale,
+                             align_corners=True, mode='bilinear')
 
-        x1_upsampled = self.upsample(x1)
-        skip = self.squeeze_excite(torch.cat(x2, prev_skip))
-        x_concat = torch.cat((x1_upsampled, skip), 1)
+        skip = self.squeeze_excite(torch.cat((feature_map, skip), 1))
+
+        x_upsampled = self.upsample(x)
+        x_concat = torch.cat((x_upsampled, skip), 1)
 
         if self.concat_disp:
-            x_concat = torch.cat((x_concat, prev_disp), 1)
+            disparity = F.interpolate(disparity, scale_factor=self.scale,
+                                      align_corners=True, mode='bilinear')
+
+            x_concat = torch.cat((x_concat, disparity), 1)
 
         out = self.iconv(x_concat)
 
-        disparity = torch.float(disp_scale) * self.disp_conv(out) \
+        disparity = scale * self.disp_conv(out) \
             if self.calculate_disp else None
 
         return out, skip, disparity

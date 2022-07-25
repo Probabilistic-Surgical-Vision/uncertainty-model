@@ -18,8 +18,8 @@ Device = Union[torch.device, str]
 
 def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
                     loss_function: Module, disparity_scale: float,
-                    device: Union[torch.device, str] = 'cpu',
-                    epoch_number: Optional[int] = None) -> float:
+                    epoch_number: Optional[int] = None,
+                    device: Device = 'cpu') -> float:
     model.train()
 
     running_loss = 0
@@ -30,10 +30,12 @@ def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
 
     tepoch = tqdm.tqdm(loader, description, unit='batch')
 
-    for i, (left, right) in enumerate(tepoch):
+    for i, image_pair in enumerate(tepoch):
         optimiser.zero_grad()
 
-        left, right = left.to(device), right.to(device)
+        left = image_pair["left"].to(device)
+        right = image_pair["right"].to(device)
+
         disparities = model(left, disparity_scale)
 
         loss = loss_function(left, right, disparities)
@@ -43,7 +45,7 @@ def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
 
         running_loss += loss.item()
 
-        average_loss_per_image = running_loss / (i * batch_size)
+        average_loss_per_image = running_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
     return average_loss_per_image
@@ -68,12 +70,12 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
 
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
-        scheduler.step()
 
         loss = train_one_epoch(model, loader, optimiser, loss_function,
-                               scale, device, epoch_number=(i+1))
+                               scale, epoch_number=(i+1), device=device)
 
         training_losses.append(loss)
+        scheduler.step()
 
         if evaluate_every is not None and i % evaluate_every == 0:
             loss = evaluate_model(model, val_loader, loss_function,

@@ -3,66 +3,66 @@ encoder:
     out_channels: 32
     kernel_size: 7
     nodes: 5
-    load_graph: graphs/nodes_5_seed_42/stage_1.yml
+    load_graph: graphs/nodes_5_seed_42
   - in_channels: 32
     out_channels: 64
     kernel_size: 5
     nodes: 5
-    load_graph: graphs/nodes_5_seed_42/stage_2.yml
+    load_graph: graphs/nodes_5_seed_42
   - in_channels: 64
     out_channels: 128
     kernel_size: 3
     nodes: 5
-    load_graph: graphs/nodes_5_seed_42/stage_3.yml
+    load_graph: graphs/nodes_5_seed_42
   - in_channels: 128
     out_channels: 256
     kernel_size: 3
     nodes: 5
-    load_graph: graphs/nodes_5_seed_42/stage_4.yml
+    load_graph: graphs/nodes_5_seed_42
   - in_channels: 256
     out_channels: 512
     kernel_size: 3
     nodes: 5
-    load_graph: graphs/nodes_5_seed_42/stage_5.yml
+    load_graph: graphs/nodes_5_seed_42
 
 decoder:
-  - x1_in_channels: 512
-    x2_in_channels: 256
-    out_channels: 256
-    upsample_channels: 128
+  - in_channels: 512
+    feature_in_channels: 256
     skip_in_channels: 512
+    upsample_channels: 128
+    out_channels: 256
     skip_out_channels: 512
     concat_disp: false
     calculate_disp: false
-  - x1_in_channels: 256
-    x2_in_channels: 128
-    out_channels: 256
-    upsample_channels: 64
+  - in_channels: 256
+    feature_in_channels: 128
     skip_in_channels: 512
+    upsample_channels: 64
+    out_channels: 256
     skip_out_channels: 256
     concat_disp: false
     calculate_disp: true
-  - x1_in_channels: 256
-    x2_in_channels: 64
-    out_channels: 128
-    upsample_channels: 64
+  - in_channels: 256
+    feature_in_channels: 64
     skip_in_channels: 256
+    upsample_channels: 64
+    out_channels: 128
     skip_out_channels: 128
     concat_disp: true
     calculate_disp: true
-  - x1_in_channels: 128
-    x2_in_channels: 32
-    out_channels: 64
-    upsample_channels: 16
+  - in_channels: 128
+    feature_in_channels: 32
     skip_in_channels: 128
+    upsample_channels: 16
+    out_channels: 64
     skip_out_channels: 64
     concat_disp: true
     calculate_disp: true
-  - x1_in_channels: 64
-    x2_in_channels: 3
-    out_channels: 32
-    upsample_channels: 8
+  - in_channels: 64
+    feature_in_channels: 3
     skip_in_channels: 64
+    upsample_channels: 8
+    out_channels: 32
     skip_out_channels: 32
     concat_disp: true
     calculate_disp: true

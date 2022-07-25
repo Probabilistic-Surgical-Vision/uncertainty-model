@@ -1,13 +1,13 @@
-from typing import Tuple
+from typing import Dict, Tuple
 
-from numpy import float64, ndarray, random
+from numpy import random
 
 import torch
 from torch import Tensor
 
 from torchvision import transforms
 
-TensorTuple = Tuple[Tensor, Tensor]
+ImageDict = Dict[str, Tensor]
 BoundsTuple = Tuple[float, float]
 ImageSizeTuple = Tuple[int, int]
 
@@ -17,13 +17,11 @@ class ResizeImage:
     def __init__(self, size: ImageSizeTuple = (256, 512)) -> None:
         self.transform = transforms.Resize(size)
 
-    def __call__(self, images: TensorTuple) -> TensorTuple:
-        left_image, right_image = images
+    def __call__(self, image_pair: ImageDict) -> ImageDict:
+        left = self.transform(image_pair["left"])
+        right = self.transform(image_pair["right"])
 
-        left_image = self.transform(left_image)
-        right_image = self.transform(right_image)
-
-        return left_image, right_image
+        return {"left": left, "right": right}
 
 
 class ToTensor:
@@ -31,13 +29,11 @@ class ToTensor:
     def __init__(self) -> None:
         self.transform = transforms.ToTensor()
 
-    def __call__(self, images: TensorTuple) -> TensorTuple:
-        left_image, right_image = images
+    def __call__(self, image_pair: ImageDict) -> ImageDict:
+        left = self.transform(image_pair["left"])
+        right = self.transform(image_pair["right"])
 
-        left_image = self.transform(left_image)
-        right_image = self.transform(right_image)
-
-        return left_image, right_image
+        return {"left": left, "right": right}
 
 
 class RandomFlip:
@@ -46,14 +42,12 @@ class RandomFlip:
         self.probability = p
         self.transform = transforms.RandomHorizontalFlip(1)
 
-    def __call__(self, images: TensorTuple) -> TensorTuple:
-        left_image, right_image = images
-
+    def __call__(self, image_pair: ImageDict) -> ImageDict:
         if random.random() < self.probability:
-            left_image = self.transform(left_image)
-            right_image = self.transform(right_image)
+            image_pair["left"] = self.transform(image_pair["left"])
+            image_pair["right"] = self.transform(image_pair["right"])
 
-        return left_image, right_image
+        return image_pair
 
 
 class RandomAugment:
@@ -67,17 +61,17 @@ class RandomAugment:
         self.brightness = brightness
         self.colour = colour
 
-    def shift_gamma(self, x: Tensor, gamma: float64) -> Tensor:
+    def shift_gamma(self, x: Tensor, gamma: torch.float) -> Tensor:
         return x ** gamma
 
-    def shift_brightness(self, x: Tensor, brightness: float64) -> Tensor:
+    def shift_brightness(self, x: Tensor, brightness: torch.float) -> Tensor:
         return x * brightness
 
-    def shift_colour(self, x: Tensor, colour: ndarray) -> Tensor:
-        return torch.tensordot(x, torch.tensor(colour), dims=0)
+    def shift_colour(self, x: Tensor, colour: Tensor) -> Tensor:
+        return x * colour.unsqueeze(-1).unsqueeze(-1)
 
-    def transform(self, x: Tensor, gamma: float64, brightness:
-                  float64, colour: ndarray) -> Tensor:
+    def transform(self, x: Tensor, gamma: torch.float, brightness:
+                  torch.float, colour: Tensor) -> Tensor:
 
         x = self.shift_gamma(x, gamma)
         x = self.shift_brightness(x, brightness)
@@ -85,15 +79,16 @@ class RandomAugment:
 
         return torch.clamp(x, 0, 1)
 
-    def __call__(self, images: TensorTuple) -> TensorTuple:
-        left_image, right_image = images
+    def __call__(self, image_pair: ImageDict) -> ImageDict:
+        left, right = image_pair["left"], image_pair["right"]
 
         if random.random() < self.probability:
             g = random.uniform(*self.gamma)
             b = random.uniform(*self.brightness)
-            c = random.uniform(*self.colour, 3)
+            c = torch.tensor(random.uniform(*self.colour, 3),
+                             dtype=torch.float)
 
-            left_image = self.transform(left_image, g, b, c)
-            right_image = self.transform(right_image, g, b, c)
+            left = self.transform(left, g, b, c)
+            right = self.transform(right, g, b, c)
 
-        return left_image, right_image
+        return {"left": left, "right": right}
