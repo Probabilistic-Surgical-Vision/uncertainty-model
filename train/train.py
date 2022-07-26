@@ -65,7 +65,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
     optimiser = Adam(model.parameters(), learning_rate)
     scheduler = StepLR(optimiser, scheduler_step_size, scheduler_decay_rate)
 
-    loss_function = MonodepthLoss()
+    loss_function = MonodepthLoss().to(device)
 
     training_losses = []
     validation_losses = []
