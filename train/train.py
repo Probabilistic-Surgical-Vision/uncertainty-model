@@ -18,6 +18,18 @@ from .utils import adjust_disparity_scale
 Device = Union[torch.device, str]
 
 
+def save_model(model: Module, directory: str, epoch: Optional[int] = None,
+               is_final: bool = False) -> None:
+
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+    
+    filename = 'final.pt' if is_final else f'epoch_{epoch+1}.pt'
+    filepath = os.path.join(directory, filename)
+
+    torch.save(model.state_dict(), filepath)
+
+
 def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
                     loss_function: Module, disparity_scale: float,
                     epoch_number: Optional[int] = None,
@@ -65,7 +77,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
     optimiser = Adam(model.parameters(), learning_rate)
     scheduler = StepLR(optimiser, scheduler_step_size, scheduler_decay_rate)
 
-    loss_function = MonodepthLoss()
+    loss_function = MonodepthLoss().to(device)
 
     training_losses = []
     validation_losses = []
@@ -73,9 +85,6 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
     if save_path is not None:
         date = datetime.now().strftime('%Y%m%d%H%M%S')
         directory = os.path.join(save_path, f'model_{date}')
-
-        if not os.path.isdir(directory):
-            os.makedirs(directory, exist_ok=True)
 
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
@@ -86,20 +95,18 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
         training_losses.append(loss)
         scheduler.step()
 
-        if evaluate_every is not None and i % evaluate_every == 0:
+        if evaluate_every is not None and (i+1) % evaluate_every == 0:
             loss = evaluate_model(model, val_loader, loss_function,
                                   scale, device=device)
 
             validation_losses.append(loss)
 
-        if save_every is not None and i % save_every == 0:
-            filepath = os.path.join(directory, f'epoch_{i+1}.pt')
-            torch.save(model.state_dict(), filepath)
+        if save_every is not None and (i+1) % save_every == 0:
+            save_model(model, directory, epoch=i)
 
     print('Training completed.')
 
     if save_path is not None:
-        filepath = os.path.join(directory, 'final.pt')
-        torch.save(model.state_dict(), filepath)
+        save_model(model, directory, is_final=True)
 
     return training_losses, validation_losses

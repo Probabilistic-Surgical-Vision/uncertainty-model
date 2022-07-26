@@ -28,8 +28,8 @@ class DaVinciDataset(Dataset):
         right_glob = os.path.join(root, split, self.RIGHT_PATH,
                                   f'*.{self.EXTENSION}')
 
-        left_images = sorted(glob.glob(left_glob))
-        right_images = sorted(glob.glob(right_glob))
+        left_images = glob.glob(left_glob)
+        right_images = glob.glob(right_glob)
 
         left_names = set(map(os.path.basename, left_images))
         right_names = set(map(os.path.basename, right_images))
@@ -37,13 +37,13 @@ class DaVinciDataset(Dataset):
         missing = left_names.symmetric_difference(right_names)
 
         if len(missing) > 0:
-            print(f'Missing {missing:,} images from the dataset.')
+            print(f'Missing {len(missing):,} images from the dataset.')
             left_images = [i for i in left_images if i not in missing]
             right_images = [i for i in right_images if i not in missing]
             print(f'Dataset reduced to {len(left_images):,} images.')
 
-        self.lefts = left_images[:limit]
-        self.rights = right_images[:limit]
+        self.lefts = sorted(left_images[:limit])
+        self.rights = sorted(right_images[:limit])
         
         self.transform = transform
 
