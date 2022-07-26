@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
+from .reconstruct import reconstruct_left_image, reconstruct_right_image
+
 
 class MonodepthLoss(nn.Module):
 
@@ -152,13 +154,13 @@ class MonodepthLoss(nn.Module):
         self.disparities.append((left_disp, right_disp))
 
         # Reconstruct the images using disparity and opposite view
-        left_recon = self.reconstruct_left(right_image, left_disp)
-        right_recon = self.reconstruct_right(left_image, right_disp)
+        left_recon = reconstruct_left_image(right_image, left_disp)
+        right_recon = reconstruct_right_image(left_image, right_disp)
         self.reconstructions.append((left_recon, right_recon))
 
         # Reconstruct disparity using disparity and opposite disparity
-        left_lr_disp = self.reconstruct_left(right_disp, left_disp)
-        right_lr_disp = self.reconstruct_right(left_disp, right_disp)
+        left_lr_disp = reconstruct_left_image(right_disp, left_disp)
+        right_lr_disp = reconstruct_right_image(left_disp, right_disp)
 
         # Get L1 Loss between reconstructed and original images
         l1_left_loss = self.l1_loss(left_recon, left_image)

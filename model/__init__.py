@@ -1,1 +1,1 @@
-from .model import RandomlyConnectedModel # noqa
+from .generator import RandomlyConnectedModel # noqa

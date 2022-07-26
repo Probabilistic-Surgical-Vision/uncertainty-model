@@ -1,8 +1,9 @@
 import os
 import os.path
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Sequential
@@ -14,41 +15,45 @@ from .layers.encoder import EncoderStage
 KernelSize = Union[int, Tuple[int, int]]
 
 
-class RandomEncoder(nn.Module):
+class RandomDiscriminator(nn.Module):
     def __init__(self, nodes: Optional[int] = None,
                  seed: Optional[int] = None,
                  load_graph: Optional[str] = None) -> None:
 
         super().__init__()
 
-        self.enc1 = self.build_encoder_stage(in_channels=3, out_channels=32,
+        self.enc1 = self.build_encoder_stage(in_channels=6, out_channels=32,
                                              kernel_size=7, nodes=nodes,
                                              seed=seed, stage=1, heads=8,
                                              load_graph=load_graph)
 
-        self.enc2 = self.build_encoder_stage(in_channels=32, out_channels=64,
+        self.enc2 = self.build_encoder_stage(in_channels=38, out_channels=64,
                                              kernel_size=5, nodes=nodes,
                                              seed=seed, stage=2, heads=8,
                                              load_graph=load_graph)
 
-        self.enc3 = self.build_encoder_stage(in_channels=64, out_channels=128,
+        self.enc3 = self.build_encoder_stage(in_channels=70, out_channels=128,
                                              kernel_size=3, nodes=nodes,
                                              seed=seed, stage=3, heads=8,
                                              load_graph=load_graph)
 
-        self.enc4 = self.build_encoder_stage(in_channels=128, out_channels=256,
+        self.enc4 = self.build_encoder_stage(in_channels=134, out_channels=256,
                                              kernel_size=3, nodes=nodes,
                                              seed=seed, stage=4, heads=8,
                                              load_graph=load_graph)
 
-        self.enc5 = self.build_encoder_stage(in_channels=256, out_channels=512,
+        self.enc5 = self.build_encoder_stage(in_channels=262, out_channels=512,
                                              kernel_size=3, nodes=nodes,
                                              seed=seed, stage=5, heads=8,
                                              load_graph=load_graph)
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
+        self.layers = nn.ModuleList([
+            self.enc1, self.enc2,
+            self.enc3, self.enc4,
+            self.enc5
+        ])
+
+        self.linear = nn.Linear(in_features=32768, out_features=1)
 
     def build_encoder_stage(self, in_channels: int, out_channels: int,
                             kernel_size: KernelSize, stage: int, heads: int,
@@ -82,12 +87,20 @@ class RandomEncoder(nn.Module):
                                out_channels, heads)
         )
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, ...]:
+    def forward(self, lefts: List[Tensor], rights: List[Tensor]) -> Tensor:
+        pyramid_iterator = zip(lefts, rights, self.layers)
 
-        x1 = self.enc1(x)
-        x2 = self.enc2(x1)
-        x3 = self.enc3(x2)
-        x4 = self.enc4(x3)
-        x5 = self.enc5(x4)
+        for i, (left, right, layer) in enumerate(pyramid_iterator):
+            stereo_concat = torch.cat((left, right), dim=1)
 
-        return x1, x2, x3, x4, x5
+            if i == 0:
+                out = layer(stereo_concat)
+                continue
+
+            feature_concat = torch.cat((out, stereo_concat), dim=1)
+            out = layer(feature_concat)
+
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+
+        return torch.sigmoid(out)
