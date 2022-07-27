@@ -15,7 +15,20 @@ from .loss import MonodepthLoss
 Device = Union[torch.device, str]
 
 
-def create_comparison_image(left: Tensor, right: Tensor,
+def save_comparison(comparison: Tensor, directory: str,
+                    epoch: Optional[int] = None,
+                    is_final: bool = True) -> None:
+
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+    
+    filename = 'final.png' if is_final else f'epoch_{epoch+1}.png'
+    filepath = os.path.join(directory, filename)
+
+    save_image(comparison, filepath)
+
+
+def create_comparison(left: Tensor, right: Tensor,
                             loss_function: MonodepthLoss) -> Tensor:
 
     left_disp_batch, right_disp_batch = loss_function.disparities[0]
@@ -40,6 +53,7 @@ def create_comparison_image(left: Tensor, right: Tensor,
 def evaluate_model(model: Module, loader: DataLoader,
                    loss_function: Module, disparity_scale: float = 1.0,
                    save_comparison_to: Optional[str] = None,
+                   epoch: Optional[int] = None, is_final: bool = True,
                    device: Device = 'cpu') -> float:
 
     running_loss = 0
@@ -63,8 +77,7 @@ def evaluate_model(model: Module, loader: DataLoader,
         tepoch.set_postfix(loss=average_loss_per_image)
 
         if save_comparison_to is not None and i == 0:
-            filepath = os.path.join(save_comparison_to, 'comparison.png')
-            image = create_comparison_image(left, right, loss_function)
-            save_image(image, filepath)
+            comparison = create_comparison(left, right, loss_function)
+            save_comparison(comparison, save_comparison_to, epoch, is_final)
 
     return average_loss_per_image

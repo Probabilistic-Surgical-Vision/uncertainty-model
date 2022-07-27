@@ -70,6 +70,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
                 scheduler_decay_rate: float = 0.1,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
+                save_comparison_to: Optional[str] = None,
                 save_every: Optional[int] = None,
                 save_path: Optional[str] = None,
                 device: Device = 'cpu') -> Tuple[List[float], List[float]]:
@@ -96,8 +97,9 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
         scheduler.step()
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
-            loss = evaluate_model(model, val_loader, loss_function,
-                                  scale, device=device)
+            loss = evaluate_model(model, val_loader, loss_function, scale,
+                                  save_comparison_to, epoch=i, device=device,
+                                  is_final=False)
 
             validation_losses.append(loss)
 
