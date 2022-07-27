@@ -52,7 +52,7 @@ def create_comparison(left: Tensor, right: Tensor,
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
                    loss_function: Module, disparity_scale: float = 1.0,
-                   save_comparison_to: Optional[str] = None,
+                   save_comparison: Optional[str] = None,
                    epoch: Optional[int] = None, is_final: bool = True,
                    device: Device = 'cpu') -> float:
 
@@ -76,8 +76,8 @@ def evaluate_model(model: Module, loader: DataLoader,
         average_loss_per_image = running_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
-        if save_comparison_to is not None and i == 0:
+        if save_comparison is not None and i == 0:
             comparison = create_comparison(left, right, loss_function)
-            save_comparison(comparison, save_comparison_to, epoch, is_final)
+            save_comparison(comparison, save_comparison, epoch, is_final)
 
     return average_loss_per_image

@@ -18,14 +18,14 @@ from .utils import adjust_disparity_scale
 Device = Union[torch.device, str]
 
 
-def save_model(model: Module, directory: str, epoch: Optional[int] = None,
+def save_model(model: Module, model_directory: str, epoch: Optional[int] = None,
                is_final: bool = False) -> None:
 
-    if not os.path.isdir(directory):
-        os.makedirs(directory, exist_ok=True)
+    if not os.path.isdir(model_directory):
+        os.makedirs(model_directory, exist_ok=True)
     
     filename = 'final.pt' if is_final else f'epoch_{epoch+1}.pt'
-    filepath = os.path.join(directory, filename)
+    filepath = os.path.join(model_directory, filename)
 
     torch.save(model.state_dict(), filepath)
 
@@ -70,7 +70,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
                 scheduler_decay_rate: float = 0.1,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
-                save_comparison_to: Optional[str] = None,
+                save_comparison: Optional[str] = None,
                 save_every: Optional[int] = None,
                 save_path: Optional[str] = None,
                 device: Device = 'cpu') -> Tuple[List[float], List[float]]:
@@ -85,7 +85,9 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
 
     if save_path is not None:
         date = datetime.now().strftime('%Y%m%d%H%M%S')
-        directory = os.path.join(save_path, f'model_{date}')
+        folder = f'model_{date}'
+        model_directory = os.path.join(save_path, folder)
+        comparison_directory = os.path.join(save_comparison, folder)
 
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
@@ -98,17 +100,17 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
             loss = evaluate_model(model, val_loader, loss_function, scale,
-                                  save_comparison_to, epoch=i, device=device,
-                                  is_final=False)
+                                  comparison_directory, epoch=i,
+                                  device=device, is_final=False)
 
             validation_losses.append(loss)
 
         if save_every is not None and (i+1) % save_every == 0:
-            save_model(model, directory, epoch=i)
+            save_model(model, model_directory, epoch=i)
 
     print('Training completed.')
 
     if save_path is not None:
-        save_model(model, directory, is_final=True)
+        save_model(model, model_directory, is_final=True)
 
     return training_losses, validation_losses
