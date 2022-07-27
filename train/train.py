@@ -12,13 +12,13 @@ from torch.utils.data import DataLoader
 import tqdm
 
 from .evaluate import evaluate_model
-from .loss import MonodepthLoss
 from .utils import adjust_disparity_scale
 
 Device = Union[torch.device, str]
 
 
-def save_model(model: Module, model_directory: str, epoch: Optional[int] = None,
+def save_model(model: Module, model_directory: str,
+               epoch: Optional[int] = None,
                is_final: bool = False) -> None:
 
     if not os.path.isdir(model_directory):
@@ -30,13 +30,15 @@ def save_model(model: Module, model_directory: str, epoch: Optional[int] = None,
     torch.save(model.state_dict(), filepath)
 
 
-def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
-                    loss_function: Module, disparity_scale: float,
+def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
+                    model_optimiser: Optimizer, disparity_scale: float,
+                    discriminator: Module, disc_optimiser: Optimizer,
+                    disc_loss_function: Module,
                     epoch_number: Optional[int] = None,
                     device: Device = 'cpu') -> float:
     model.train()
 
-    running_loss = 0
+    running_model_loss = 0
     batch_size = loader.batch_size \
         if loader.batch_size is not None else len(loader)
     description = f'Epoch #{epoch_number}' \
@@ -45,29 +47,35 @@ def train_one_epoch(model: Module, loader: DataLoader, optimiser: Optimizer,
     tepoch = tqdm.tqdm(loader, description, unit='batch')
 
     for i, image_pair in enumerate(tepoch):
-        optimiser.zero_grad()
+        model_optimiser.zero_grad()
 
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
 
         disparities = model(left, disparity_scale)
+        model_loss = loss_function(left, right, disparities,
+                                   discriminator)
 
-        loss = loss_function(left, right, disparities)
+        model_loss.backward()
+        model_optimiser.step()
 
-        loss.backward()
-        optimiser.step()
+        disc_loss = disc_loss_function(left, right, disparities)
 
-        running_loss += loss.item()
+        disc_loss.backward()
+        disc_optimiser.step()
 
-        average_loss_per_image = running_loss / ((i+1) * batch_size)
+        running_model_loss += model_loss.item()
+
+        average_loss_per_image = running_model_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
     return average_loss_per_image
 
 
-def train_model(model: Module, loader: DataLoader, epochs: int,
-                learning_rate: float, scheduler_step_size: int = 15,
+def train_model(model: Module, loader: DataLoader, loss_function: Module,
+                discriminator: Module, epochs: int, learning_rate: float,
                 scheduler_decay_rate: float = 0.1,
+                scheduler_step_size: int = 15,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
                 save_comparison: Optional[str] = None,
@@ -75,10 +83,10 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
                 save_path: Optional[str] = None,
                 device: Device = 'cpu') -> Tuple[List[float], List[float]]:
 
-    optimiser = Adam(model.parameters(), learning_rate)
-    scheduler = StepLR(optimiser, scheduler_step_size, scheduler_decay_rate)
+    model_optimiser = Adam(model.parameters(), learning_rate)
+    disc_optimiser = Adam(discriminator.parameters(), learning_rate)
 
-    loss_function = MonodepthLoss().to(device)
+    scheduler = StepLR(model_optimiser, scheduler_step_size, scheduler_decay_rate)
 
     training_losses = []
     validation_losses = []
@@ -92,8 +100,9 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
 
-        loss = train_one_epoch(model, loader, optimiser, loss_function,
-                               scale, epoch_number=(i+1), device=device)
+        loss = train_one_epoch(model, loader, model_optimiser, loss_function,
+                               scale, discriminator, disc_optimiser,
+                               epoch_number=(i+1), device=device)
 
         training_losses.append(loss)
         scheduler.step()

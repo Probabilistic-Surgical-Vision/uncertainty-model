@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
+from torch import Module, Tensor
 
 from .reconstruct import reconstruct_left_image, reconstruct_right_image
 
@@ -140,24 +140,53 @@ class AdversarialLoss(nn.Module):
         return self.loss(pred, truth)
 
 
-class PerceptualLoss:
-    pass
+class PerceptualLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
 
+    def l1_loss(self, x: Tensor, y: Tensor) -> Tensor:
+        return (x - y).abs().mean()
 
-class MultiScaleLoss(nn.Module):
-    def __init__(self, scales: int = 4, wssim_weight: float = 0.85,
+    def forward(self, original: TensorPair, reconstructed: TensorPair,
+                discriminator: Module) -> Tensor:
+
+        perceptual_loss = 0
+        
+        left_image, right_image = original
+        left_recon, right_recon = reconstructed
+
+        image_features = discriminator.features(left_image, right_image)
+        recon_features = discriminator.features(left_recon, right_recon)
+
+        for image, recon in zip(image_features, recon_features):
+            perceptual_loss += self.l1_loss(image, recon)
+
+        return perceptual_loss
+
+class GeneratorLoss(nn.Module):
+    def __init__(self, scales: int = 4, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
                  adversarial_weight: float = 0.85,
-                 wssim_alpha: float = 0.85) -> None:
+                 wssim_alpha: float = 0.85,
+                 adversarial_loss_type: str = 'mse') -> None:
 
         super().__init__()
+
+        self.scales = scales
 
         self.wssim = WeightedSSIMLoss(wssim_alpha)
 
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
-        self.adversarial = AdversarialLoss()
+
+        self.adversarial = AdversarialLoss(adversarial_loss_type)
+        self.perceptual = PerceptualLoss()
+
+        self.wssim_weight = wssim_weight
+        self.consistency_weight = consistency_weight
+        self.smoothness_weight = smoothness_weight
+        self.adversarial_weight = adversarial_weight
 
     def scale_pyramid(self, x: Tensor,
                       scales: Optional[int] = None) -> List[Tensor]:
@@ -177,3 +206,77 @@ class MultiScaleLoss(nn.Module):
             pyramid.append(x_resized)
 
         return pyramid
+    
+    def forward(self, left_image: Tensor, right_image: Tensor,
+                disparities: Tuple[Tensor, ...],
+                disc: Optional[Module] = None,
+                disc_pred: Optional[Tensor] = None,
+                disc_truth: Optional[Tensor] = None) -> Tensor:
+        
+        left_pyramid = self.scale_pyramid(left_image)
+        right_pyramid = self.scale_pyramid(right_image)
+
+        reprojection_loss = 0
+        consistency_loss = 0
+        smoothness_loss = 0
+        adversarial_loss = 0
+
+        scales = zip(left_pyramid, right_pyramid, disparities)
+
+        for left_image, right_image, disparity in scales:
+            left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+            
+            left_recon = reconstruct_left_image(left_disp, right_image)
+            right_recon = reconstruct_right_image(right_disp, left_image)
+
+            image_tuple = (left_image, right_image)
+            disp_tuple = (left_disp, right_disp)
+            recon_tuple = (left_recon, right_recon)
+
+            reprojection_loss += self.wssim(image_tuple, recon_tuple)
+            consistency_loss += self.consistency(disp_tuple)
+            smoothness_loss += self.smoothness(disp_tuple, image_tuple)
+
+        if disc is not None:
+            adversarial_loss += self.adversarial(disc_pred, disc_truth)
+            adversarial_loss += self.perceptual(image_tuple, recon_tuple,
+                                                discriminator=disc)
+
+        return reprojection_loss * self.wssim_weight \
+            + (consistency_loss * self.consistency_weight) \
+            + (smoothness_loss * self.smoothness_weight)
+
+class DiscriminatorLoss(nn.Module):
+
+    def __init__(self, scales: int = 4, loss_type: str = 'mse') -> None:
+        super().__init__()
+
+        self.adversarial = AdversarialLoss(loss_type)
+
+    def scale_pyramid(self, x: Tensor,
+                      scales: Optional[int] = None) -> List[Tensor]:
+
+        scales = self.scales if scales is None else scales
+        _, _, height, width = x.size()
+
+        pyramid = []
+
+        for i in range(scales):
+            ratio = 2 ** i
+
+            size = (height // ratio, width // ratio)
+            x_resized = F.interpolate(x, size=size, mode='bilinear',
+                                      align_corners=True)
+
+            pyramid.append(x_resized)
+
+        return pyramid
+
+    def forward(self, left_image: Tensor, right_image: Tensor,
+                disparities: Tuple[Tensor, ...],
+                discriminator: Module) -> Tensor:
+        
+        left_pyramid = self.scale_pyramid(left_image)
+        right_pyramid = self.scale_pyramid(right_image)
+
+        real_predictions = discriminator
