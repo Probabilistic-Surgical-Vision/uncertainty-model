@@ -24,7 +24,7 @@ def save_model(model: Module, model_directory: str, epoch: Optional[int] = None,
     if not os.path.isdir(model_directory):
         os.makedirs(model_directory, exist_ok=True)
     
-    filename = 'final.pt' if is_final else f'epoch_{epoch+1}.pt'
+    filename = 'final.pt' if is_final else f'epoch_{epoch+1:03}.pt'
     filepath = os.path.join(model_directory, filename)
 
     torch.save(model.state_dict(), filepath)
@@ -70,7 +70,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
                 scheduler_decay_rate: float = 0.1,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
-                save_comparison: Optional[str] = None,
+                save_comparison_to: Optional[str] = None,
                 save_every: Optional[int] = None,
                 save_path: Optional[str] = None,
                 device: Device = 'cpu') -> Tuple[List[float], List[float]]:
@@ -87,7 +87,7 @@ def train_model(model: Module, loader: DataLoader, epochs: int,
         date = datetime.now().strftime('%Y%m%d%H%M%S')
         folder = f'model_{date}'
         model_directory = os.path.join(save_path, folder)
-        comparison_directory = os.path.join(save_comparison, folder)
+        comparison_directory = os.path.join(save_comparison_to, folder)
 
     for i in range(epochs):
         scale = adjust_disparity_scale(epoch=i)
