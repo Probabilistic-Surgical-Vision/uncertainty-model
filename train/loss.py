@@ -6,11 +6,9 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
 
-from .utils import ImagePyramid, l1_loss, scale_pyramid, \
-    reconstruct_left_image, reconstruct_right_image
+from . import utils as u
+from .utils import PyramidPair, TensorPair
 
-TensorPair = Tuple[Tensor, Tensor]
-PyramidPair = Tuple[ImagePyramid, ImagePyramid]
 
 class WeightedSSIMLoss(nn.Module):
     def __init__(self, alpha: float = 0.85, k1: float = 0.01,
@@ -54,8 +52,8 @@ class WeightedSSIMLoss(nn.Module):
         left_image, right_image = original
         left_recon, right_recon = reconstructed
 
-        left_l1_loss = l1_loss(left_image, left_recon)
-        right_l1_loss = l1_loss(right_image, right_recon)
+        left_l1_loss = u.l1_loss(left_image, left_recon)
+        right_l1_loss = u.l1_loss(right_image, right_recon)
 
         left_ssim_loss = self.dssim(left_image, left_recon)
         right_ssim_loss = self.dssim(right_image, right_recon)
@@ -74,11 +72,11 @@ class ConsistencyLoss(nn.Module):
     def forward(self, disparities: TensorPair) -> Tensor:
         left_disp, right_disp = disparities
 
-        left_lr_disp = reconstruct_left_image(left_disp, right_disp)
-        right_lr_disp = reconstruct_right_image(right_disp, left_disp)
+        left_lr_disp = u.reconstruct_left_image(left_disp, right_disp)
+        right_lr_disp = u.reconstruct_right_image(right_disp, left_disp)
 
-        left_con_loss = l1_loss(left_disp, left_lr_disp)
-        right_con_loss = l1_loss(right_disp, right_lr_disp)
+        left_con_loss = u.l1_loss(left_disp, left_lr_disp)
+        right_con_loss = u.l1_loss(right_disp, right_lr_disp)
 
         return torch.sum(left_con_loss + right_con_loss)
 
@@ -158,7 +156,7 @@ class PerceptualLoss(nn.Module):
         recon_maps = disc.features(left_recon_pyramid, right_recon_pyramid)
 
         for image_map, recon_map in zip(image_maps, recon_maps):
-            perceptual_loss += l1_loss(image_map, recon_map)
+            perceptual_loss += u.l1_loss(image_map, recon_map)
 
         return perceptual_loss
 
@@ -187,44 +185,30 @@ class GeneratorLoss(nn.Module):
         self.smoothness_weight = smoothness_weight
         self.adversarial_weight = adversarial_weight
     
-    def forward(self, left_image: Tensor, right_image: Tensor,
+    def forward(self, image_pyramid: PyramidPair,
                 disparities: Tuple[Tensor, ...],
+                recon_pyramid: PyramidPair,
                 discrminator: Optional[Module] = None) -> Tensor:
         
-        left_pyramid = scale_pyramid(left_image, self.scales)
-        right_pyramid = scale_pyramid(right_image, self.scales)
-
         reprojection_loss = 0
         consistency_loss = 0
         smoothness_loss = 0
         adversarial_loss = 0
 
-        left_recon_pyramid = []
-        right_recon_pyramid = []
+        scales = zip(*image_pyramid, disparities, *recon_pyramid)
 
-        scales = zip(left_pyramid, right_pyramid, disparities)
-
-        for left, right, disparity in scales:
+        for left, right, disparity, left_recon, right_recon in scales:
             left_disp, right_disp = torch.split(disparity, [1, 1], 1)
             
-            left_recon = reconstruct_left_image(left_disp, right)
-            right_recon = reconstruct_right_image(right_disp, left)
-
             image_tuple = (left, right)
             disp_tuple = (left_disp, right_disp)
             recon_tuple = (left_recon, right_recon)
-
-            left_recon_pyramid.append(left_recon)
-            right_recon_pyramid.append(right_recon)
 
             reprojection_loss += self.wssim(image_tuple, recon_tuple)
             consistency_loss += self.consistency(disp_tuple)
             smoothness_loss += self.smoothness(disp_tuple, image_tuple)
 
         if discrminator is not None:
-            image_pyramid = (left_pyramid, right_pyramid)
-            recon_pyramid = (left_recon_pyramid, right_recon_pyramid)
-
             adversarial_loss += self.adversarial(recon_pyramid, discrminator)
             adversarial_loss += self.perceptual(image_pyramid, recon_pyramid,
                                                 disc=discrminator)

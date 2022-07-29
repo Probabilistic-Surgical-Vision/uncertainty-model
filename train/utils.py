@@ -1,15 +1,16 @@
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
 
 import numpy as np
-from numpy import ndarray
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 
 ImagePyramid = List[Tensor]
+PyramidPair = Tuple[ImagePyramid, ImagePyramid]
+TensorPair = Tuple[Tensor, Tensor]
 Device = Union[torch.device, str]
 
 
@@ -70,6 +71,24 @@ def reconstruct_right_image(right_disparity: Tensor,
     return reconstruct(right_disparity, left_image)
 
 
+def reconstruct_pyramid(disparities: ImagePyramid, lefts: ImagePyramid,
+                        rights: ImagePyramid) -> PyramidPair:
+
+    left_recon_pyramid = []
+    right_recon_pyramid = []
+
+    for left, right, disparity in zip(lefts, rights, disparities):
+        left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+
+        left_recon = reconstruct_left_image(left_disp, right)
+        right_recon = reconstruct_right_image(right_disp, left)
+
+        left_recon_pyramid.append(left_recon)
+        right_recon_pyramid.append(right_recon)
+
+    return left_recon_pyramid, right_recon_pyramid
+
+
 def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
                            beta: float = 0.15, min_scale: float = 0.3,
                            max_scale: float = 1.0) -> float:
@@ -90,15 +109,15 @@ def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
     return torch.from_numpy(heatmap).to(device).permute(2, 0, 1)
 
 
-def post_process_disparity(disparity: ndarray, alpha: float = 20,
-                           beta: float = 0.05) -> ndarray:
+def combine_disparity(left: Tensor, right: Tensor, device: Device = 'cpu',
+                      alpha: float = 20, beta: float = 0.05) -> Tensor:
 
-    left_disparity = disparity[0]
-    right_disparity = np.fliplr(disparity[1])
+    left_disp = left.cpu().numpy()
+    right_disp = np.fliplr(right.cpu().numpy())
 
-    mean_disparity = (left_disparity + right_disparity) / 2
+    mean_disp = (left_disp + right_disp) / 2
 
-    _, height, width = disparity.shape
+    _, height, width = mean_disp.shape
 
     x = np.linspace(0, 1, width)
     y = np.linspace(0, 1, height)
@@ -109,5 +128,8 @@ def post_process_disparity(disparity: ndarray, alpha: float = 20,
 
     mean_mask = 1 - (left_mask + right_mask)
 
-    return (right_mask * left_disparity) + (left_mask * right_disparity) \
-        + (mean_mask * mean_disparity)
+    combined_disparity = (right_mask * left_disp) \
+        + (left_mask * right_disp) \
+        + (mean_mask * mean_disp)
+
+    return torch.from_numpy(combined_disparity).to(device)

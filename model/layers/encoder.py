@@ -144,7 +144,7 @@ class GraphBlock(nn.Module):
 class EncoderStage(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: KernelSize, stage: int, heads: int,
+                 kernel_size: KernelSize, stage: int, heads: int = 8,
                  nodes: int = 5, p: float = 0.75, k: int = 4,
                  seed: Optional[int] = None,
                  load_graph: Optional[str] = None,

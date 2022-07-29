@@ -10,8 +10,8 @@ from torchvision.utils import make_grid, save_image
 
 import tqdm
 
-from .utils import Device, to_heatmap, \
-    reconstruct_left_image, reconstruct_right_image
+from . import utils as u
+from .utils import Device, ImagePyramid, PyramidPair
 
 
 def save_comparison(comparison: Tensor, directory: str,
@@ -27,31 +27,41 @@ def save_comparison(comparison: Tensor, directory: str,
     save_image(comparison, filepath)
 
 
-def create_comparison(left: Tensor, right: Tensor, disparity: Tensor,
+def create_comparison(image_pyramid: PyramidPair, disparities: ImagePyramid,
+                      recon_pyramid: PyramidPair,
                       device: Device = 'cpu') -> Tensor:
 
-    left_disp, right_disp = torch.split(disparity, [1, 1], 1)
-    
-    left_recon = reconstruct_left_image(left_disp, right)
-    right_recon = reconstruct_right_image(right_disp, left)
+    left_pyramid, right_pyramid = image_pyramid
+    left_recon_pyramid, right_recon_pyramid = recon_pyramid
 
-    left_disp = to_heatmap(left_disp[0].detach(), device, inverse=True)
-    right_disp = to_heatmap(right_disp[0].detach(), device, inverse=True)
+    # Get the largest scale image from the pyramids
+    left, right = left_pyramid[0], right_pyramid[0]
+    left_disp, right_disp = torch.split(disparities[0], [1, 1], 1)
+    left_recon, right_recon = left_recon_pyramid[0], right_recon_pyramid[0]
 
-    grid = torch.stack((
-        left[0], right[0],
-        left_disp, right_disp,
-        left_recon[0], right_recon[0]))
+    combined_disp = u.combine_disparity(left_disp[0], right_disp[0], device)
+    # Scale up to increase disparity contrast
+    scaled_disp = combined_disp / (combined_disp.max() - combined_disp.min()) 
+
+    left_disp = u.to_heatmap(left_disp[0], device)
+    right_disp = u.to_heatmap(right_disp[0], device)
+    combined_disp = u.to_heatmap(combined_disp, device)
+    scaled_disp = u.to_heatmap(scaled_disp, device)
+
+    grid = torch.stack((left[0], right[0],
+                       left_disp, right_disp,
+                       combined_disp, scaled_disp,
+                       left_recon[0], right_recon[0]))
 
     return make_grid(grid, nrow=2)
 
 
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
-                   loss_function: Module, disparity_scale: float = 1.0,
+                   loss_function: Module, scale: float = 1.0,
                    save_comparison_to: Optional[str] = None,
                    epoch: Optional[int] = None, is_final: bool = True,
-                   device: Device = 'cpu') -> float:
+                   scales: int = 4, device: Device = 'cpu') -> float:
 
     running_loss = 0
 
@@ -65,8 +75,16 @@ def evaluate_model(model: Module, loader: DataLoader,
         left = image_pair["left"].to(device)
         right = image_pair["right"].to(device)
 
-        disparities = model(left, disparity_scale)
-        loss = loss_function(left, right, disparities)
+        left_pyramid = u.scale_pyramid(left, scales)
+        right_pyramid = u.scale_pyramid(right, scales)
+
+        disparities = model(left, scale)
+
+        image_pyramid = (left_pyramid, right_pyramid)
+        recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
+                                              right_pyramid)
+
+        loss = loss_function(image_pyramid, disparities, recon_pyramid)
 
         running_loss += loss.item()
 
@@ -74,8 +92,9 @@ def evaluate_model(model: Module, loader: DataLoader,
         tepoch.set_postfix(loss=average_loss_per_image)
 
         if save_comparison_to is not None and i == 0:
-            # Use the full-size disparity image
-            comparison = create_comparison(left, right, disparities[0], device)
+            comparison = create_comparison(image_pyramid, disparities,
+                                           recon_pyramid, device)
+
             save_comparison(comparison, save_comparison_to, epoch, is_final)
 
     return average_loss_per_image

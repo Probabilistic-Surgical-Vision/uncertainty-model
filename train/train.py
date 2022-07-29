@@ -1,7 +1,7 @@
 import os
 import os.path
 from datetime import datetime
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -13,37 +13,20 @@ from torch.utils.data import DataLoader
 import tqdm
 
 from .evaluate import evaluate_model
-from .utils import Device, scale_pyramid, reconstruct_left_image, \
-    reconstruct_right_image, adjust_disparity_scale
+from . import utils as u
+from .utils import Device, PyramidPair
 
 
 def run_discriminator(discriminator: Module, disc_loss_function: Module,
-                      left_image: Tensor, right_image: Tensor,
-                      disparities: Tuple[Tensor, ...],
-                      scales: int = 4) -> Tensor:
-
-    left_pyramid = scale_pyramid(left_image, scales)
-    right_pyramid = scale_pyramid(right_image, scales)
+                      image_pyramid: PyramidPair,
+                      recon_pyramid: PyramidPair) -> Tensor:
     
-    real_pred = discriminator(left_pyramid, right_pyramid)
+    real_pred = discriminator(*image_pyramid)
     real_labels = torch.ones_like(real_pred)
 
     real_loss = disc_loss_function(real_pred, real_labels)
 
-    left_recon_pyramid = []
-    right_recon_pyramid = []
-
-    for i, disparity in enumerate(disparities):
-        disparity = disparity.detach().clone()
-
-        left_disp, right_disp = torch.split(disparity, [1, 1], 1)
-        left_recon = reconstruct_left_image(left_disp, right_pyramid[i])
-        right_recon = reconstruct_right_image(right_disp, left_pyramid[i])
-
-        left_recon_pyramid.append(left_recon)
-        right_recon_pyramid.append(right_recon)
-
-    fake_pred = discriminator(left_recon_pyramid, right_recon_pyramid)
+    fake_pred = discriminator(*recon_pyramid)
     fake_labels = torch.zeros_like(fake_pred)
 
     fake_loss = disc_loss_function(fake_pred, fake_labels)
@@ -65,10 +48,11 @@ def save_model(model: Module, model_directory: str,
 
 def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     model_optimiser: Optimizer, scale: float,
-                    discriminator: Module, disc_optimiser: Optimizer,
-                    disc_loss_function: Module,
+                    disc: Optional[Module] = None,
+                    disc_optimiser: Optional[Optimizer] = None,
+                    disc_loss_function: Optional[Module] = None,
                     epoch_number: Optional[int] = None,
-                    device: Device = 'cpu') -> float:
+                    scales: int = 4, device: Device = 'cpu') -> float:
     model.train()
 
     running_model_loss = 0
@@ -87,24 +71,35 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
 
+        left_pyramid = u.scale_pyramid(left, scales)
+        right_pyramid = u.scale_pyramid(right, scales)
+
         disparities = model(left, scale)
-        model_loss = loss_function(left, right, disparities,
-                                   discriminator)
+
+        image_pyramid = (left_pyramid, right_pyramid)
+        recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
+                                              right_pyramid)
+        
+        model_loss = loss_function(image_pyramid, disparities,
+                                   recon_pyramid, disc)
 
         model_loss.backward()
         model_optimiser.step()
 
-        disc_optimiser.zero_grad()
-        disc_loss = run_discriminator(discriminator, disc_loss_function, 
-                                      left, right, disparities)
-        disc_loss.backward()
-        disc_optimiser.step()
-
         running_model_loss += model_loss.item()
-        running_disc_loss += disc_loss.item()
-
         model_loss_per_image = running_model_loss / ((i+1) * batch_size)
-        disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
+
+        if disc is not None:
+            disc_optimiser.zero_grad()
+            disc_loss = run_discriminator(disc, disc_loss_function,
+                                          image_pyramid, recon_pyramid)
+            disc_loss.backward()
+            disc_optimiser.step()
+
+            running_disc_loss += disc_loss.item()
+            disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
+        else:
+            disc_loss_per_image = None
 
         tepoch.set_postfix(model=model_loss_per_image,
                            disc=disc_loss_per_image)
@@ -112,10 +107,10 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
     return model_loss_per_image, disc_loss_per_image
 
 
-def train_model(model: Module, discriminator: Module,
-                loader: DataLoader, loss_function: Module,
-                disc_loss_function: Module,
+def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 epochs: int, learning_rate: float,
+                discriminator: Optional[Module] = None,
+                disc_loss_function: Optional[Module] = None,
                 scheduler_decay_rate: float = 0.1,
                 scheduler_step_size: int = 15,
                 val_loader: Optional[DataLoader] = None,
@@ -126,7 +121,9 @@ def train_model(model: Module, discriminator: Module,
                 device: Device = 'cpu') -> Tuple[List[float], List[float]]:
 
     model_optimiser = Adam(model.parameters(), learning_rate)
-    disc_optimiser = Adam(discriminator.parameters(), learning_rate)
+
+    disc_optimiser = Adam(discriminator.parameters(), learning_rate) \
+        if discriminator is not None else None
 
     scheduler = StepLR(model_optimiser, scheduler_step_size,
                        scheduler_decay_rate)
@@ -141,7 +138,7 @@ def train_model(model: Module, discriminator: Module,
         comparison_directory = os.path.join(save_comparison_to, folder)
 
     for i in range(epochs):
-        scale = adjust_disparity_scale(epoch=i)
+        scale = u.adjust_disparity_scale(epoch=i)
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
                                scale, discriminator, disc_optimiser,

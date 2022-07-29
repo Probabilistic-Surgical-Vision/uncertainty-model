@@ -2,22 +2,27 @@ encoder:
   - in_channels: 3
     out_channels: 32
     kernel_size: 7
+    heads: 8
     load_graph: graphs/nodes_5_seed_42
   - in_channels: 32
     out_channels: 64
     kernel_size: 5
+    heads: 8
     load_graph: graphs/nodes_5_seed_42
   - in_channels: 64
     out_channels: 128
     kernel_size: 3
+    heads: 8
     load_graph: graphs/nodes_5_seed_42
   - in_channels: 128
     out_channels: 256
     kernel_size: 3
+    heads: 8
     load_graph: graphs/nodes_5_seed_42
   - in_channels: 256
     out_channels: 512
     kernel_size: 3
+    heads: 8
     load_graph: graphs/nodes_5_seed_42
 
 decoder:
@@ -61,3 +66,34 @@ decoder:
     skip_out_channels: 32
     concat_disp: true
     calculate_disp: true
+
+discriminator:
+  pyramid-layers:
+    - in_channels: 6
+      out_channels: 32
+      kernel_size: 7
+      heads: 8
+      load_graph: graphs/nodes_5_seed_42
+    - in_channels: 38
+      out_channels: 64
+      kernel_size: 5
+      heads: 8
+      load_graph: graphs/nodes_5_seed_42
+    - in_channels: 70
+      out_channels: 128
+      kernel_size: 3
+      heads: 8
+      load_graph: graphs/nodes_5_seed_42
+    - in_channels: 134
+      out_channels: 256
+      kernel_size: 3
+      heads: 8
+      load_graph: graphs/nodes_5_seed_42
+  post-pyramid-layers:
+    - in_channels: 256
+      out_channels: 256
+      kernel_size: 3
+      heads: 8
+      load_graph: graphs/nodes_5_seed_42
+  linear-layer:
+    in_features: 32768
