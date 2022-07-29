@@ -12,7 +12,7 @@ class ConvLayer(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
                  padding: bool = True, reflection: bool = True,
-                 sigmoid: bool = False, kernel_size: KernelSize = 3):
+                 sigmoid: bool = False, kernel_size: KernelSize = 3) -> None:
 
         super().__init__()
 
@@ -38,7 +38,7 @@ class ConvELUBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
                  padding: bool = True, kernel_size: KernelSize = 3,
-                 batch_norm: bool = False):
+                 batch_norm: bool = False) -> None:
 
         super().__init__()
 
@@ -55,7 +55,9 @@ class ConvELUBlock(nn.Module):
 
 class SELayer(nn.Module):
 
-    def __init__(self, channels: int, reduction: int = 16, fc: bool = True):
+    def __init__(self, channels: int, reduction: int = 16,
+                 fc: bool = True) -> None:
+
         super().__init__()
 
         self.fc = fc
@@ -98,7 +100,7 @@ class DecoderStage(nn.Module):
                  out_channels: int, skip_out_channels: int,
                  disp_channels: int = 2, batch_norm: bool = True,
                  fc: bool = True, scale: int = 2, concat_disp: bool = True,
-                 calculate_disp: bool = True):
+                 calculate_disp: bool = True) -> None:
 
         super().__init__()
 

@@ -1,4 +1,6 @@
-from typing import Tuple, Union
+import os
+import os.path
+from typing import Optional, Tuple, Union
 
 from networkx import Graph
 
@@ -7,7 +9,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Size, Tensor
 
-from ..graph import Node, get_graph_info
+from .attention import EfficientAttention
+
+from .. import graph as g
+from ..graph import Node
 
 KernelSize = Union[int, Tuple[int, int]]
 StrideSize = Union[int, Tuple[int, int]]
@@ -16,7 +21,7 @@ StrideSize = Union[int, Tuple[int, int]]
 class ConvELUBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int,
-                 kernel_size: KernelSize, stride: StrideSize):
+                 kernel_size: KernelSize, stride: StrideSize) -> None:
 
         super().__init__()
 
@@ -37,7 +42,7 @@ class ConvELUBlock(nn.Module):
 class NodeBlock(nn.Module):
 
     def __init__(self, node: Node, in_channels: int, out_channels: int,
-                 kernel_size: KernelSize):
+                 kernel_size: KernelSize) -> None:
 
         super().__init__()
 
@@ -84,14 +89,14 @@ class NodeBlock(nn.Module):
         return self.convolution(out)
 
 
-class EncoderStage(nn.Module):
+class GraphBlock(nn.Module):
 
     def __init__(self, graph: Graph, in_channels: int, out_channels: int,
-                 kernel_size: KernelSize):
+                 kernel_size: KernelSize) -> None:
 
         super().__init__()
 
-        self.nodes, self.in_nodes, self.out_nodes = get_graph_info(graph)
+        self.nodes, self.in_nodes, self.out_nodes = g.get_graph_info(graph)
 
         self.node_blocks = nn.ModuleList()
 
@@ -134,3 +139,42 @@ class EncoderStage(nn.Module):
             out += results[idx]
 
         return out / len(self.out_nodes)
+
+
+class EncoderStage(nn.Module):
+
+    def __init__(self, in_channels: int, out_channels: int,
+                 kernel_size: KernelSize, stage: int, heads: int,
+                 nodes: int = 5, p: float = 0.75, k: int = 4,
+                 seed: Optional[int] = None,
+                 load_graph: Optional[str] = None,
+                 save_graph: Optional[str] = None) -> None:
+
+        super().__init__()
+
+        if load_graph is not None:
+            filename = f"stage_{stage}.gpickle"
+            filepath = os.path.join(load_graph, filename)
+            graph = g.load_graph(filepath)
+        else:
+            graph = g.build_graph(nodes, k, p, seed=(stage*seed))
+
+            if save_graph is not None:
+                directory = f'nodes_{nodes}_seed_{seed}'
+                directory_path = os.path.join(save_graph, directory)
+
+                if not os.path.isdir(directory_path):
+                    os.makedirs(directory_path, exist_ok=True)
+
+                filename = f'stage_{stage}.gpickle'
+                filepath = os.path.join(directory_path, filename)
+
+                g.save_graph(graph, filepath)
+
+        self.layers = nn.Sequential(
+            GraphBlock(graph, in_channels, out_channels, kernel_size),
+            EfficientAttention(out_channels, out_channels,
+                               out_channels, heads))
+    
+    def forward(self, x: Tensor) -> Tensor:
+        return self.layers(x)
