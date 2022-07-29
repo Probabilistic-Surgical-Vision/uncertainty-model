@@ -1,5 +1,5 @@
 import os.path
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from torch import Tensor
@@ -10,9 +10,8 @@ from torchvision.utils import make_grid, save_image
 
 import tqdm
 
-from .loss import MonodepthLoss
-
-Device = Union[torch.device, str]
+from .utils import Device, to_heatmap, \
+    reconstruct_left_image, reconstruct_right_image
 
 
 def save_comparison(comparison: Tensor, directory: str,
@@ -28,31 +27,29 @@ def save_comparison(comparison: Tensor, directory: str,
     save_image(comparison, filepath)
 
 
-def create_comparison(left: Tensor, right: Tensor,
-                            loss_function: MonodepthLoss) -> Tensor:
+def create_comparison(left: Tensor, right: Tensor, disparity: Tensor,
+                      device: Device = 'cpu') -> Tensor:
 
-    left_disp_batch, right_disp_batch = loss_function.disparities[0]
-    left_recon_batch, right_recon_batch = loss_function.reconstructions[0]
+    left_disp, right_disp = torch.split(disparity, [1, 1], 0)
+    
+    left_recon = reconstruct_left_image(left_disp, right)
+    right_recon = reconstruct_right_image(right_disp, left)
 
-    left_disp = left_disp_batch[0].detach()
-    right_disp = right_disp_batch[0].detach()
+    left_disp = to_heatmap(left_disp[0].detach(), device, inverse=True)
+    right_disp = to_heatmap(right_disp[0].detach(), device, inverse=True)
 
-    left_disp = torch.cat((left_disp, left_disp, left_disp), dim=0)
-    right_disp = torch.cat((right_disp, right_disp, right_disp), dim=0)
+    grid = torch.stack((
+        left[0], right[0],
+        left_disp, right_disp,
+        left_recon[0], right_recon[0]))
 
-    left_recon = left_recon_batch[0].detach()
-    right_recon = right_recon_batch[0].detach()
-
-    grid = torch.stack((left[0], left_disp, left_recon,
-                       right[0], right_disp, right_recon), dim=0)
-
-    return make_grid(grid, nrow=3)
+    return make_grid(grid, nrow=2)
 
 
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
                    loss_function: Module, disparity_scale: float = 1.0,
-                   save_comparison: Optional[str] = None,
+                   save_comparison_to: Optional[str] = None,
                    epoch: Optional[int] = None, is_final: bool = True,
                    device: Device = 'cpu') -> float:
 
@@ -76,8 +73,9 @@ def evaluate_model(model: Module, loader: DataLoader,
         average_loss_per_image = running_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
-        if save_comparison is not None and i == 0:
-            comparison = create_comparison(left, right, loss_function)
-            save_comparison(comparison, save_comparison, epoch, is_final)
+        if save_comparison_to is not None and i == 0:
+            # Use the full-size disparity image
+            comparison = create_comparison(left, right, disparities[0], device)
+            save_comparison(comparison, save_comparison_to, epoch, is_final)
 
     return average_loss_per_image

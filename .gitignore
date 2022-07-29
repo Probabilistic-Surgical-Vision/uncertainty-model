@@ -9,3 +9,4 @@ venv
 
 # Large files
 model-package.zip
+trained/

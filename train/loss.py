@@ -1,103 +1,30 @@
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from torch.nn import Module
 
-from .reconstruct import reconstruct_left_image, reconstruct_right_image
+from .utils import ImagePyramid, l1_loss, scale_pyramid, \
+    reconstruct_left_image, reconstruct_right_image
 
+TensorPair = Tuple[Tensor, Tensor]
+PyramidPair = Tuple[ImagePyramid, ImagePyramid]
 
-class MonodepthLoss(nn.Module):
-
-    def __init__(self, scales: int = 4, ssim_weight: float = 0.85,
-                 smoothness_weight: float = 1.0,
-                 consistency_weight: float = 1.0) -> None:
+class WeightedSSIMLoss(nn.Module):
+    def __init__(self, alpha: float = 0.85, k1: float = 0.01,
+                 k2: float = 0.03) -> None:
 
         super().__init__()
 
-        self.scales = scales
-
-        self.ssim_weight = ssim_weight
-        self.smoothness_weight = smoothness_weight
-        self.consistency_weight = consistency_weight
-
-        self.l1_weight = 1 - self.ssim_weight
+        self.alpha = alpha
+        self.k1 = k1
+        self.k2 = k2
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
 
-        self.repr_loss = 0
-        self.con_loss = 0
-        self.smooth_loss = 0
-
-        self.disparities = []
-        self.reconstructions = []
-
-    def scale_pyramid(self, x: Tensor,
-                      scales: Optional[int] = None) -> List[Tensor]:
-
-        scales = self.scales if scales is None else scales
-        _, _, height, width = x.size()
-
-        pyramid = []
-
-        for i in range(scales):
-            ratio = 2 ** i
-
-            size = (height // ratio, width // ratio)
-            x_resized = F.interpolate(x, size=size, mode='bilinear',
-                                      align_corners=True)
-
-            pyramid.append(x_resized)
-
-        return pyramid
-
-    def gradient_x(self, x: Tensor) -> Tensor:
-        # Pad input to keep output size consistent
-        x = F.pad(x, (0, 1, 0, 0), mode='replicate')
-        return x[:, :, :, :-1] - x[:, :, :, 1:]
-
-    def gradient_y(self, x: Tensor) -> Tensor:
-        # Pad input to keep output size consistent
-        x = F.pad(x, (0, 0, 0, 1), mode='replicate')
-        return x[:, :, :-1, :] - x[:, :, 1:, :]
-
-    def apply_disparity(self, x: Tensor, disparity: Tensor):
-        batch_size, _, height, width = x.size()
-
-        # Original coordinates of pixels
-        x_base = torch.linspace(0, 1, width) \
-            .repeat(batch_size, height, 1) \
-            .type_as(x)
-
-        y_base = torch.linspace(0, 1, height) \
-            .repeat(batch_size, width, 1) \
-            .transpose(1, 2) \
-            .type_as(x)
-
-        # Apply shift in X direction
-        x_shifts = disparity.squeeze(dim=1)
-
-        # In grid_sample coordinates are assumed to be between -1 and 1
-        flow_field = torch.stack((x_base + x_shifts, y_base), dim=3)
-        flow_field = (2 * flow_field) - 1
-
-        output = F.grid_sample(x, flow_field, mode='bilinear',
-                               padding_mode='zeros')
-
-        return output
-
-    def reconstruct_left(self, right: Tensor, disparity: Tensor) -> Tensor:
-        return self.apply_disparity(right, -disparity)
-
-    def reconstruct_right(self, left: Tensor, disparity: Tensor) -> Tensor:
-        return self.apply_disparity(left, disparity)
-
-    def l1_loss(self, x: Tensor, y: Tensor) -> Tensor:
-        return (x - y).abs().mean()
-
-    def ssim(self, x: Tensor, y: Tensor, k1: float = 0.01,
-             k2: float = 0.03) -> Tensor:
+    def ssim(self, x: Tensor, y: Tensor) -> Tensor:
 
         luminance_x = self.pool(x)
         luminance_y = self.pool(y)
@@ -111,21 +38,64 @@ class MonodepthLoss(nn.Module):
 
         contrast_xy = self.pool(x * y) - luminance_xy
 
-        numerator = ((2 * luminance_xy) + k1) * ((2 * contrast_xy) + k2)
+        numerator = ((2 * luminance_xy) + self.k1) * ((2 * contrast_xy) + self.k2)
 
-        denominator = (luminance_xx + luminance_yy + k1) \
-            * (contrast_x + contrast_y + k2)
+        denominator = (luminance_xx + luminance_yy + self.k1) \
+            * (contrast_x + contrast_y + self.k2)
 
-        # Check whether this outputs a tensor or a float
         return torch.clamp(numerator / denominator, 0, 1)
 
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
         return (1 - self.ssim(x, y)) / 2
 
-    def consistency_loss(self, disparity: Tensor,
-                         lr_disparity: Tensor) -> Tensor:
+    def forward(self, original: TensorPair,
+                reconstructed: TensorPair) -> Tensor:
 
-        return self.l1_loss(disparity, lr_disparity)
+        left_image, right_image = original
+        left_recon, right_recon = reconstructed
+
+        left_l1_loss = l1_loss(left_image, left_recon)
+        right_l1_loss = l1_loss(right_image, right_recon)
+
+        left_ssim_loss = self.dssim(left_image, left_recon)
+        right_ssim_loss = self.dssim(right_image, right_recon)
+
+        total_l1_loss = torch.sum(left_l1_loss + right_l1_loss)
+        total_ssim_loss = torch.sum(left_ssim_loss + right_ssim_loss)
+
+        return (self.alpha * total_ssim_loss) \
+            + ((1 - self.alpha) * total_l1_loss)
+
+
+class ConsistencyLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()    
+
+    def forward(self, disparities: TensorPair) -> Tensor:
+        left_disp, right_disp = disparities
+
+        left_lr_disp = reconstruct_left_image(left_disp, right_disp)
+        right_lr_disp = reconstruct_right_image(right_disp, left_disp)
+
+        left_con_loss = l1_loss(left_disp, left_lr_disp)
+        right_con_loss = l1_loss(right_disp, right_lr_disp)
+
+        return torch.sum(left_con_loss + right_con_loss)
+
+
+class SmoothnessLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def gradient_x(self, x: Tensor) -> Tensor:
+        # Pad input to keep output size consistent
+        x = F.pad(x, (0, 1, 0, 0), mode='replicate')
+        return x[:, :, :, :-1] - x[:, :, :, 1:]
+
+    def gradient_y(self, x: Tensor) -> Tensor:
+        # Pad input to keep output size consistent
+        x = F.pad(x, (0, 0, 0, 1), mode='replicate')
+        return x[:, :, :-1, :] - x[:, :, 1:, :]
 
     def smoothness_weights(self, image_gradient: Tensor) -> Tensor:
         return torch.exp(-image_gradient.abs().mean(dim=1, keepdim=True))
@@ -145,76 +115,120 @@ class MonodepthLoss(nn.Module):
 
         return smoothness_x.abs() + smoothness_y.abs()
 
-    def total_loss(self, left_image: Tensor, right_image: Tensor,
-                   disparity: Tensor) -> Tuple[3 * (float,)]:
+    def forward(self, disparities: TensorPair, images: TensorPair) -> Tensor:
+        left_disp, right_disp = disparities
+        left_image, right_image = images
 
-        # Split the channels into 4 tensors
-        left_disp, right_disp = torch.split(disparity, [1, 1], 1)
-
-        self.disparities.append((left_disp, right_disp))
-
-        # Reconstruct the images using disparity and opposite view
-        left_recon = reconstruct_left_image(right_image, left_disp)
-        right_recon = reconstruct_right_image(left_image, right_disp)
-        self.reconstructions.append((left_recon, right_recon))
-
-        # Reconstruct disparity using disparity and opposite disparity
-        left_lr_disp = reconstruct_left_image(right_disp, left_disp)
-        right_lr_disp = reconstruct_right_image(left_disp, right_disp)
-
-        # Get L1 Loss between reconstructed and original images
-        l1_left_loss = self.l1_loss(left_recon, left_image)
-        l1_right_loss = self.l1_loss(right_recon, right_image)
-
-        # Get SSIM between the reconstructed and original images
-        ssim_left_loss = self.dssim(left_recon, left_image)
-        ssim_right_loss = self.dssim(right_recon, right_image)
-
-        # Combine L1 and SSIM to get Weighted SSIM Metric
-        repr_left_loss = (l1_left_loss * self.l1_weight) \
-            + (ssim_left_loss * self.ssim_weight)
-
-        repr_right_loss = (l1_right_loss * self.l1_weight) \
-            + (ssim_right_loss * self.ssim_weight)
-
-        # Get Consistency Loss
-        con_left_loss = self.consistency_loss(left_disp, left_lr_disp)
-        con_right_loss = self.consistency_loss(right_disp, right_lr_disp)
-
-        # Get Smoothness Loss
         smooth_left_loss = self.smoothness_loss(left_disp, left_image)
         smooth_right_loss = self.smoothness_loss(right_disp, right_image)
 
-        # Sum losses from both views
-        repr_loss = torch.sum(repr_left_loss + repr_right_loss)
-        con_loss = torch.sum(con_left_loss + con_right_loss)
-        smooth_loss = torch.sum(smooth_left_loss + smooth_right_loss)
+        return torch.sum(smooth_left_loss + smooth_right_loss)
 
-        return repr_loss, con_loss, smooth_loss
 
+class AdversarialLoss(nn.Module):
+    def __init__(self, loss: str = 'mse') -> None:
+        super().__init__()
+
+        self.loss = nn.MSELoss() \
+            if loss == 'mse' else nn.BCELoss()
+
+    def forward(self, pyramids: PyramidPair, disc: Module,
+                is_fake: bool = True) -> Tensor:
+        
+        predictions = disc(*pyramids)
+        labels = torch.zeros_like(predictions) if is_fake \
+            else torch.ones_like(predictions)
+        
+        return self.loss(predictions, labels).sum()
+
+
+class PerceptualLoss(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, image_pyramid: PyramidPair,
+                recon_pyramid: PyramidPair, disc: Module) -> Tensor:
+
+        perceptual_loss = 0
+        
+        left_image_pyramid, right_image_pyramid = image_pyramid
+        left_recon_pyramid, right_recon_pyramid = recon_pyramid
+
+        image_maps = disc.features(left_image_pyramid, right_image_pyramid)
+        recon_maps = disc.features(left_recon_pyramid, right_recon_pyramid)
+
+        for image_map, recon_map in zip(image_maps, recon_maps):
+            perceptual_loss += l1_loss(image_map, recon_map)
+
+        return perceptual_loss
+
+class GeneratorLoss(nn.Module):
+    def __init__(self, scales: int = 4, wssim_weight: float = 1.0,
+                 consistency_weight: float = 1.0,
+                 smoothness_weight: float = 1.0,
+                 adversarial_weight: float = 0.85,
+                 wssim_alpha: float = 0.85,
+                 adversarial_loss_type: str = 'mse') -> None:
+
+        super().__init__()
+
+        self.scales = scales
+
+        self.wssim = WeightedSSIMLoss(wssim_alpha)
+
+        self.consistency = ConsistencyLoss()
+        self.smoothness = SmoothnessLoss()
+
+        self.adversarial = AdversarialLoss(adversarial_loss_type)
+        self.perceptual = PerceptualLoss()
+
+        self.wssim_weight = wssim_weight
+        self.consistency_weight = consistency_weight
+        self.smoothness_weight = smoothness_weight
+        self.adversarial_weight = adversarial_weight
+    
     def forward(self, left_image: Tensor, right_image: Tensor,
-                disparities: Tuple[Tensor]) -> float:
+                disparities: Tuple[Tensor, ...],
+                discrminator: Optional[Module] = None) -> Tensor:
+        
+        left_pyramid = scale_pyramid(left_image, self.scales)
+        right_pyramid = scale_pyramid(right_image, self.scales)
 
-        left_pyramid = self.scale_pyramid(left_image)
-        right_pyramid = self.scale_pyramid(right_image)
+        reprojection_loss = 0
+        consistency_loss = 0
+        smoothness_loss = 0
+        adversarial_loss = 0
 
-        self.repr_loss = 0
-        self.con_loss = 0
-        self.smooth_loss = 0
-
-        self.disparities = []
-        self.reconstructions = []
+        left_recon_pyramid = []
+        right_recon_pyramid = []
 
         scales = zip(left_pyramid, right_pyramid, disparities)
 
         for left, right, disparity in scales:
-            (repr_loss, con_loss,
-             smooth_loss) = self.total_loss(left, right, disparity)
+            left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+            
+            left_recon = reconstruct_left_image(left_disp, right)
+            right_recon = reconstruct_right_image(right_disp, left)
 
-            self.repr_loss += repr_loss
-            self.con_loss += con_loss
-            self.smooth_loss += smooth_loss
+            image_tuple = (left, right)
+            disp_tuple = (left_disp, right_disp)
+            recon_tuple = (left_recon, right_recon)
 
-        return self.repr_loss \
-            + (self.con_loss * self.consistency_weight) \
-            + (self.smooth_loss * self.smoothness_weight)
+            left_recon_pyramid.append(left_recon)
+            right_recon_pyramid.append(right_recon)
+
+            reprojection_loss += self.wssim(image_tuple, recon_tuple)
+            consistency_loss += self.consistency(disp_tuple)
+            smoothness_loss += self.smoothness(disp_tuple, image_tuple)
+
+        if discrminator is not None:
+            image_pyramid = (left_pyramid, right_pyramid)
+            recon_pyramid = (left_recon_pyramid, right_recon_pyramid)
+
+            adversarial_loss += self.adversarial(recon_pyramid, discrminator)
+            adversarial_loss += self.perceptual(image_pyramid, recon_pyramid,
+                                                disc=discrminator)
+
+        return reprojection_loss * self.wssim_weight \
+            + (consistency_loss * self.consistency_weight) \
+            + (smoothness_loss * self.smoothness_weight)
