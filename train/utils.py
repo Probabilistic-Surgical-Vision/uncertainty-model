@@ -81,7 +81,7 @@ def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
 def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
                colour_map: str = 'inferno') -> Tensor:
     
-    image = x.squeeze(0).numpy()
+    image = x.squeeze(0).cpu().numpy()
     image = 1 - image if inverse else image
 
     transform = plt.get_cmap(colour_map)

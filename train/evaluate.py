@@ -30,7 +30,7 @@ def save_comparison(comparison: Tensor, directory: str,
 def create_comparison(left: Tensor, right: Tensor, disparity: Tensor,
                       device: Device = 'cpu') -> Tensor:
 
-    left_disp, right_disp = torch.split(disparity, [1, 1], 0)
+    left_disp, right_disp = torch.split(disparity, [1, 1], 1)
     
     left_recon = reconstruct_left_image(left_disp, right)
     right_recon = reconstruct_right_image(right_disp, left)

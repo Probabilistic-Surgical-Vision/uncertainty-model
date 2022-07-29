@@ -231,4 +231,5 @@ class GeneratorLoss(nn.Module):
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
-            + (smoothness_loss * self.smoothness_weight)
+            + (smoothness_loss * self.smoothness_weight) \
+            + (adversarial_loss * self.adversarial_weight)
