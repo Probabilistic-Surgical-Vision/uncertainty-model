@@ -81,7 +81,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                                               right_pyramid)
         
         model_loss = loss_function(image_pyramid, disparities,
-                                   recon_pyramid, disc)
+                                   recon_pyramid, i, disc)
 
         model_loss.backward()
         model_optimiser.step()

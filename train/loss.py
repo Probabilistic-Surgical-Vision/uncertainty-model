@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from . import utils as u
-from .utils import PyramidPair, TensorPair
+from .utils import ImagePyramid, PyramidPair, TensorPair
 
 
 class WeightedSSIMLoss(nn.Module):
@@ -123,23 +123,6 @@ class SmoothnessLoss(nn.Module):
         return torch.sum(smooth_left_loss + smooth_right_loss)
 
 
-class AdversarialLoss(nn.Module):
-    def __init__(self, loss: str = 'mse') -> None:
-        super().__init__()
-
-        self.loss = nn.MSELoss() \
-            if loss == 'mse' else nn.BCELoss()
-
-    def forward(self, pyramids: PyramidPair, disc: Module,
-                is_fake: bool = True) -> Tensor:
-        
-        predictions = disc(*pyramids)
-        labels = torch.zeros_like(predictions) if is_fake \
-            else torch.ones_like(predictions)
-        
-        return self.loss(predictions, labels).sum()
-
-
 class PerceptualLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -160,12 +143,38 @@ class PerceptualLoss(nn.Module):
 
         return perceptual_loss
 
+
+class AdversarialLoss(nn.Module):
+    def __init__(self, loss: str = 'mse', perceptual_start: int = 5) -> None:
+        super().__init__()
+
+        self.adversarial = nn.MSELoss() if loss == 'mse' else nn.BCELoss()
+        self.perceptual = PerceptualLoss()
+
+        self.perceptual_start = perceptual_start
+
+    def forward(self, image_pyramid: PyramidPair, recon_pyramid: PyramidPair,
+                discriminator: Module, epoch: int) -> Tensor:
+        
+        predictions = discriminator(*recon_pyramid)
+        labels = torch.ones_like(predictions)
+
+        loss = self.adversarial(predictions, labels)
+
+        if epoch >= self.perceptual_start:
+            loss += self.perceptual(image_pyramid, recon_pyramid,
+                                    discriminator)
+
+        return loss
+
+
 class GeneratorLoss(nn.Module):
     def __init__(self, scales: int = 4, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
                  adversarial_weight: float = 0.85,
                  wssim_alpha: float = 0.85,
+                 perceptual_start: int = 5,
                  adversarial_loss_type: str = 'mse') -> None:
 
         super().__init__()
@@ -177,8 +186,8 @@ class GeneratorLoss(nn.Module):
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
 
-        self.adversarial = AdversarialLoss(adversarial_loss_type)
-        self.perceptual = PerceptualLoss()
+        self.adversarial = AdversarialLoss(adversarial_loss_type,
+                                           perceptual_start)
 
         self.wssim_weight = wssim_weight
         self.consistency_weight = consistency_weight
@@ -187,8 +196,8 @@ class GeneratorLoss(nn.Module):
     
     def forward(self, image_pyramid: PyramidPair,
                 disparities: Tuple[Tensor, ...],
-                recon_pyramid: PyramidPair,
-                discrminator: Optional[Module] = None) -> Tensor:
+                recon_pyramid: PyramidPair, epoch: int,
+                discriminator: Optional[Module] = None) -> Tensor:
         
         reprojection_loss = 0
         consistency_loss = 0
@@ -208,10 +217,9 @@ class GeneratorLoss(nn.Module):
             consistency_loss += self.consistency(disp_tuple)
             smoothness_loss += self.smoothness(disp_tuple, image_tuple)
 
-        if discrminator is not None:
-            adversarial_loss += self.adversarial(recon_pyramid, discrminator)
-            adversarial_loss += self.perceptual(image_pyramid, recon_pyramid,
-                                                disc=discrminator)
+        if discriminator is not None:
+            adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
+                                                 discriminator, epoch)
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
