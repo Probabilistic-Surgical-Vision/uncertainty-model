@@ -205,17 +205,16 @@ class GeneratorLoss(nn.Module):
         smoothness_loss = 0
         adversarial_loss = 0
 
-        scales = zip(*image_pyramid, disparities, *recon_pyramid)
+        image_tuples = zip(*image_pyramid)
+        recon_tuples = zip(*recon_pyramid)
 
-        for left, right, disparity, left_recon, right_recon in scales:
-            left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+        scales = zip(image_tuples, disparities, recon_tuples)
 
-            image_tuple = (left, right)
-            disp_tuple = (left_disp, right_disp)
-            recon_tuple = (left_recon, right_recon)
+        for i, (image_tuple, disparity, recon_tuple) in enumerate(scales):
+            disp_tuple = torch.split(disparity, [1, 1], 1)
 
             reprojection_loss += self.wssim(image_tuple, recon_tuple)
-            consistency_loss += self.consistency(disp_tuple)
+            consistency_loss += self.consistency(disp_tuple) / (2 ** i)
             smoothness_loss += self.smoothness(disp_tuple, image_tuple)
 
         if discriminator is not None:

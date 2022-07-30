@@ -103,7 +103,8 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
             disc_loss_per_image = None
 
         tepoch.set_postfix(model=model_loss_per_image,
-                           disc=disc_loss_per_image)
+                           disc=disc_loss_per_image,
+                           scale=scale)
 
     return model_loss_per_image, disc_loss_per_image
 
