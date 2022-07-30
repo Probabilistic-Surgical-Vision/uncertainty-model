@@ -20,7 +20,7 @@ from .utils import Device, PyramidPair
 def run_discriminator(discriminator: Module, disc_loss_function: Module,
                       image_pyramid: PyramidPair,
                       recon_pyramid: PyramidPair) -> Tensor:
-    
+
     real_pred = discriminator(*image_pyramid)
     real_labels = torch.ones_like(real_pred)
 
@@ -33,13 +33,14 @@ def run_discriminator(discriminator: Module, disc_loss_function: Module,
 
     return (real_loss + fake_loss) / 2
 
+
 def save_model(model: Module, model_directory: str,
                epoch: Optional[int] = None,
                is_final: bool = False) -> None:
 
     if not os.path.isdir(model_directory):
         os.makedirs(model_directory, exist_ok=True)
-    
+
     filename = 'final.pt' if is_final else f'epoch_{epoch+1:03}.pt'
     filepath = os.path.join(model_directory, filename)
 
@@ -79,7 +80,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         image_pyramid = (left_pyramid, right_pyramid)
         recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
                                               right_pyramid)
-        
+
         model_loss = loss_function(image_pyramid, disparities,
                                    recon_pyramid, i, disc)
 

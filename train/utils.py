@@ -31,7 +31,7 @@ def scale_pyramid(x: Tensor, scales: int) -> ImagePyramid:
                                   align_corners=True)
 
         pyramid.append(x_resized)
-    
+
     return pyramid
 
 
@@ -99,12 +99,12 @@ def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
 
 def to_heatmap(x: Tensor, device: Device = 'cpu', inverse: bool = False,
                colour_map: str = 'inferno') -> Tensor:
-    
+
     image = x.squeeze(0).cpu().numpy()
     image = 1 - image if inverse else image
 
     transform = plt.get_cmap(colour_map)
-    heatmap = transform(image)[:,:,:3] # remove alpha channel
+    heatmap = transform(image)[:, :, :3]  # remove alpha channel
 
     return torch.from_numpy(heatmap).to(device).permute(2, 0, 1)
 

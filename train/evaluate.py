@@ -20,7 +20,7 @@ def save_comparison(comparison: Tensor, directory: str,
 
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
-    
+
     filename = 'final.png' if is_final else f'epoch_{epoch+1}.png'
     filepath = os.path.join(directory, filename)
 
@@ -39,18 +39,18 @@ def create_comparison(image_pyramid: PyramidPair, disparities: ImagePyramid,
     left_disp, right_disp = torch.split(disparities[0], [1, 1], 1)
     left_recon, right_recon = left_recon_pyramid[0], right_recon_pyramid[0]
 
-    combined_disp = u.combine_disparity(left_disp[0], right_disp[0], device)
+    disp = u.combine_disparity(left_disp[0], right_disp[0], device)
     # Scale up to increase disparity contrast
-    scaled_disp = combined_disp / (combined_disp.max() - combined_disp.min()) 
+    scaled_disp = (disp - disp.min()) / (disp.max() - disp.min())
 
     left_disp = u.to_heatmap(left_disp[0], device)
     right_disp = u.to_heatmap(right_disp[0], device)
-    combined_disp = u.to_heatmap(combined_disp, device)
+    disp = u.to_heatmap(disp, device)
     scaled_disp = u.to_heatmap(scaled_disp, device)
 
     grid = torch.stack((left[0], right[0],
                        left_disp, right_disp,
-                       combined_disp, scaled_disp,
+                       disp, scaled_disp,
                        left_recon[0], right_recon[0]))
 
     return make_grid(grid, nrow=2)

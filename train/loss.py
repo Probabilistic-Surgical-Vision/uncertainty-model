@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from . import utils as u
-from .utils import ImagePyramid, PyramidPair, TensorPair
+from .utils import PyramidPair, TensorPair
 
 
 class WeightedSSIMLoss(nn.Module):
@@ -36,7 +36,8 @@ class WeightedSSIMLoss(nn.Module):
 
         contrast_xy = self.pool(x * y) - luminance_xy
 
-        numerator = ((2 * luminance_xy) + self.k1) * ((2 * contrast_xy) + self.k2)
+        numerator = ((2 * luminance_xy) + self.k1) \
+            * ((2 * contrast_xy) + self.k2)
 
         denominator = (luminance_xx + luminance_yy + self.k1) \
             * (contrast_x + contrast_y + self.k2)
@@ -67,7 +68,7 @@ class WeightedSSIMLoss(nn.Module):
 
 class ConsistencyLoss(nn.Module):
     def __init__(self) -> None:
-        super().__init__()    
+        super().__init__()
 
     def forward(self, disparities: TensorPair) -> Tensor:
         left_disp, right_disp = disparities
@@ -131,7 +132,7 @@ class PerceptualLoss(nn.Module):
                 recon_pyramid: PyramidPair, disc: Module) -> Tensor:
 
         perceptual_loss = 0
-        
+
         left_image_pyramid, right_image_pyramid = image_pyramid
         left_recon_pyramid, right_recon_pyramid = recon_pyramid
 
@@ -155,7 +156,7 @@ class AdversarialLoss(nn.Module):
 
     def forward(self, image_pyramid: PyramidPair, recon_pyramid: PyramidPair,
                 discriminator: Module, epoch: int) -> Tensor:
-        
+
         predictions = discriminator(*recon_pyramid)
         labels = torch.ones_like(predictions)
 
@@ -193,12 +194,12 @@ class GeneratorLoss(nn.Module):
         self.consistency_weight = consistency_weight
         self.smoothness_weight = smoothness_weight
         self.adversarial_weight = adversarial_weight
-    
+
     def forward(self, image_pyramid: PyramidPair,
                 disparities: Tuple[Tensor, ...],
                 recon_pyramid: PyramidPair, epoch: int,
                 discriminator: Optional[Module] = None) -> Tensor:
-        
+
         reprojection_loss = 0
         consistency_loss = 0
         smoothness_loss = 0
@@ -208,7 +209,7 @@ class GeneratorLoss(nn.Module):
 
         for left, right, disparity, left_recon, right_recon in scales:
             left_disp, right_disp = torch.split(disparity, [1, 1], 1)
-            
+
             image_tuple = (left, right)
             disp_tuple = (left_disp, right_disp)
             recon_tuple = (left_recon, right_recon)

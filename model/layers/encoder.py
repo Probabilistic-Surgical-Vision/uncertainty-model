@@ -175,6 +175,6 @@ class EncoderStage(nn.Module):
             GraphBlock(graph, in_channels, out_channels, kernel_size),
             EfficientAttention(out_channels, out_channels,
                                out_channels, heads))
-    
+
     def forward(self, x: Tensor) -> Tensor:
         return self.layers(x)

@@ -47,13 +47,13 @@ class CityScapesDataset(Dataset):
 
         self.lefts = sorted(left_images[:limit])
         self.rights = sorted(right_images[:limit])
-        
+
         self.transform = transform
 
     def image_ids(self, image_paths: List[str]) -> List[str]:
         basenames = map(os.path.basename, image_paths)
         matches = map(self.FILENAME_REGEX.match, basenames)
-        
+
         return [m.group(1) for m in matches if m is not None]
 
     def __getitem__(self, idx):

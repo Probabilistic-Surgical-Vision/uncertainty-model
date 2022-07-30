@@ -70,7 +70,7 @@ class RandomDiscriminator(nn.Module):
     def forward(self, lefts: ImagePyramid, rights: ImagePyramid) -> Tensor:
         out = self.features(lefts, rights)[-1]
         out = out.view(out.size(0), -1)
-        
+
         out = self.linear(out)
 
         return torch.sigmoid(out)

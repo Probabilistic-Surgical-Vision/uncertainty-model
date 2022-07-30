@@ -22,11 +22,11 @@ class RandomEncoder(nn.Module):
                                  stage=2, heads=8, load_graph=load_graph)
 
         self.enc3 = EncoderStage(in_channels=64, out_channels=128,
-                                 kernel_size=3, nodes=nodes, seed=seed, 
+                                 kernel_size=3, nodes=nodes, seed=seed,
                                  stage=3, heads=8, load_graph=load_graph)
 
         self.enc4 = EncoderStage(in_channels=128, out_channels=256,
-                                 kernel_size=3, nodes=nodes, seed=seed, 
+                                 kernel_size=3, nodes=nodes, seed=seed,
                                  stage=4, heads=8, load_graph=load_graph)
 
         self.enc5 = EncoderStage(in_channels=256, out_channels=512,

@@ -44,7 +44,7 @@ class DaVinciDataset(Dataset):
 
         self.lefts = sorted(left_images[:limit])
         self.rights = sorted(right_images[:limit])
-        
+
         self.transform = transform
 
     def __getitem__(self, idx):
