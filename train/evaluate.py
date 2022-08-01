@@ -70,7 +70,8 @@ def evaluate_model(model: Module, loader: DataLoader,
         if loader.batch_size is not None \
         else len(loader)
 
-    tepoch = tqdm.tqdm(loader, 'Evaluation', unit='batch', disable=no_pbar)
+    description = 'Evaluation'
+    tepoch = tqdm.tqdm(loader, description, unit='batch', disable=no_pbar)
 
     for i, image_pair in enumerate(tepoch):
         left = image_pair["left"].to(device)
@@ -97,5 +98,10 @@ def evaluate_model(model: Module, loader: DataLoader,
                                            recon_pyramid, device)
 
             save_comparison(comparison, save_evaluation_to, epoch, is_final)
+
+    if no_pbar:
+        print(f"{description}:"
+              f"\n\tmodel loss: {average_loss_per_image:.2e}"
+              f"\n\tdisparity scale: {scale:.2f}")
 
     return average_loss_per_image

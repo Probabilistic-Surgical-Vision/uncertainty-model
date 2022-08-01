@@ -3,12 +3,22 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=lem3617
+#SBATCH --output=/vol/bitbucket/lem3617/tukra-model/results/run-001.out
+#SBATCH --error=/vol/bitbucket/lem3617/tukra-model/results/run-001.err
 
-export PATH=/vol/bitbucket/${USER}/tukra-model-env/bin/:$PATH
+BITBUCKET_HOME=/vol/bitbucket/lem3617
+REPO_DIR=$BITBUCKET_HOME/tukra-model
+
+export PATH=$REPO_DIR/venv/bin/:$PATH
+
 source activate
 source /vol/cuda/11.0.3-cudnn8.0.5.39/setup.sh
-TERM=vt100 # or TERM=xterm
+
+TERM=vt100
 /usr/bin/nvidia-smi
 uptime
 
-python main.py config.yaml da-vinci --no-pbar
+python main.py config.yml da-vinci --epochs 50 \
+    --save-model-to $REPO_DIR/trained/da-vinci --save-model-every 10 \
+    --save-evaluation-to $REPO_DIR/results/da-vinci --evaluate-every 10 \
+    --home $BITBUCKET_HOME --no-pbar

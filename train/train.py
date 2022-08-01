@@ -112,6 +112,12 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                            disc=disc_loss_per_image,
                            scale=scale)
 
+    if no_pbar:
+        print(f"{description}:"
+              f"\n\tmodel loss: {model_loss_per_image:.2e}"
+              f"\n\tdisc loss: {disc_loss_per_image:.2e}"
+              f"\n\tdisparity scale: {scale:.2f}")
+
     return model_loss_per_image, disc_loss_per_image
 
 
@@ -162,7 +168,8 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
             loss = evaluate_model(model, val_loader, loss_function, scale,
                                   comparison_directory, epoch=i,
-                                  device=device, is_final=False)
+                                  device=device, is_final=False,
+                                  no_pbar=no_pbar)
 
             validation_losses.append(loss)
 

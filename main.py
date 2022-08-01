@@ -102,16 +102,16 @@ if __name__ == '__main__':
     loss_function = GeneratorLoss().to(device)
 
     model_parameters = sum(p.numel() for p in model.parameters())
-    print(f'Model has {model_parameters:,} learnable parameters.')
-    print(f'Using CUDA? {next(model.parameters()).is_cuda}')
+    print(f'Model has {model_parameters:,} learnable parameters.'
+          f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
     if args.loss == 'adversarial':
         disc = RandomDiscriminator(config['discriminator']).to(device)
         disc_loss_function = BCELoss().to(device)
 
         disc_parameters = sum(p.numel() for p in disc.parameters())
-        print(f'Discriminator has {disc_parameters:,} learnable parameters.')
-        print(f'Using CUDA? {next(disc.parameters()).is_cuda}')
+        print(f'Discriminator has {disc_parameters:,} learnable parameters.'
+              f'\n\tUsing CUDA? {next(disc.parameters()).is_cuda}')
 
     else:
         disc = None
