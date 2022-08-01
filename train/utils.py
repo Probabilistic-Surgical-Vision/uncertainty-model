@@ -35,6 +35,15 @@ def scale_pyramid(x: Tensor, scales: int) -> ImagePyramid:
     return pyramid
 
 
+def detach_pyramid(pyramid: PyramidPair) -> PyramidPair:
+    left, right = pyramid
+    
+    left_detached = [layer.detach().clone() for layer in left]
+    right_detached = [layer.detach().clone() for layer in right]
+
+    return left_detached, right_detached
+
+
 def reconstruct(disparity: Tensor, opposite_image: Tensor) -> Tensor:
     batch_size, _, height, width = opposite_image.size()
 

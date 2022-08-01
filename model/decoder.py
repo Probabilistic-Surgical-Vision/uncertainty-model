@@ -25,12 +25,12 @@ class DepthDecoder(nn.Module):
 
         f1, f2, f3, f4, x4 = feature_maps
 
-        out5, skip5, _ = self.layers[4](x4, f4, x4, scale=scale)
+        out5, skip5, _ = self.layers[0](x4, f4, x4, scale=scale)
 
-        out4, skip4, disp4 = self.layers[3](out5, f3, skip5, scale=scale)
+        out4, skip4, disp4 = self.layers[1](out5, f3, skip5, scale=scale)
         out3, skip3, disp3 = self.layers[2](out4, f2, skip4, disp4, scale)
-        out2, skip2, disp2 = self.layers[1](out3, f1, skip3, disp3, scale)
+        out2, skip2, disp2 = self.layers[3](out3, f1, skip3, disp3, scale)
 
-        _, _, disp1 = self.layers[0](out2, left_image, skip2, disp2, scale)
+        _, _, disp1 = self.layers[4](out2, left_image, skip2, disp2, scale)
 
         return disp1, disp2, disp3, disp4

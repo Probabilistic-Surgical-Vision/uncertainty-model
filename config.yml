@@ -89,8 +89,8 @@ discriminator:
       out_channels: 256
       kernel_size: 3
       heads: 8
-  final-conv:
-    - in_channels: 256
+  conv:
+      in_channels: 256
       out_channels: 256
       kernel_size: 3
       heads: 8

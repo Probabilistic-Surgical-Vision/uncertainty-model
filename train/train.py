@@ -81,8 +81,8 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         disparities = model(left, scale)
 
         image_pyramid = (left_pyramid, right_pyramid)
-        recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
-                                              right_pyramid)
+        recon_pyramid = u.reconstruct_pyramid(disparities, *image_pyramid)
+        disc_recon_pyramid = u.detach_pyramid(recon_pyramid)
 
         model_loss = loss_function(image_pyramid, disparities,
                                    recon_pyramid, i, disc_clone)
@@ -96,7 +96,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         if disc is not None:
             disc_optimiser.zero_grad()
             disc_loss = run_discriminator(disc, disc_loss_function,
-                                          image_pyramid, recon_pyramid)
+                                          image_pyramid, disc_recon_pyramid)
             disc_loss.backward()
             disc_optimiser.step()
 
@@ -105,7 +105,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         else:
             disc_loss_per_image = None
 
-        if i % perceptual_update_freq == 0:
+        if disc is not None and i % perceptual_update_freq == 0:
             disc_clone.load_state_dict(disc.state_dict())
 
         tepoch.set_postfix(model=model_loss_per_image,
@@ -153,7 +153,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
                                scale, discriminator, disc_optimiser,
                                disc_loss_function, (i+1),
-                               perceptual_update_freq,
+                               perceptual_update_freq=perceptual_update_freq,
                                device=device, no_pbar=no_pbar)
 
         training_losses.append(loss)

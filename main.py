@@ -89,14 +89,14 @@ if __name__ == '__main__':
     val_dataset = dataset_class(dataset_path, val_label,
                                 no_augment_transform, args.validation_size)
 
+    print(f'Dataset size:'
+          f'\n\tTrain: {len(train_dataset):,} images.'
+          f'\n\tTest: {len(val_dataset):,} images.')
+
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               shuffle=True, num_workers=args.workers)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
                             shuffle=False, num_workers=args.workers)
-
-    print(f'Dataset size:'
-          f'\n\tTrain: {len(train_dataset):,} images.'
-          f'\n\tTest: {len(val_dataset):,} images.')
 
     model = RandomlyConnectedModel(config['model']).to(device)
     loss_function = GeneratorLoss().to(device)
@@ -121,6 +121,6 @@ if __name__ == '__main__':
                       args.learning_rate, disc, disc_loss_function,
                       val_loader=val_loader, save_model_to=args.save_model_to,
                       save_evaluation_to=args.save_evaluation_to,
-                      save_every=args.save_every,
+                      save_every=args.save_model_every,
                       evaluate_every=args.evaluate_every,
                       device=device, no_pbar=args.no_pbar)
