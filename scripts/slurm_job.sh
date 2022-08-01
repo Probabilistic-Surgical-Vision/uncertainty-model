@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --gres=gpu:1
-#SBATCH --mail-type=ALL # required to send email notifcations
+#SBATCH --mail-type=ALL
 #SBATCH --mail-user=lem3617
 
 export PATH=/vol/bitbucket/${USER}/tukra-model-env/bin/:$PATH

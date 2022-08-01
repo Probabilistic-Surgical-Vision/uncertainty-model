@@ -15,8 +15,6 @@ import train
 from train.loss import GeneratorLoss
 
 
-home_directory = os.environ["HOME"]
-
 parser = argparse.ArgumentParser()
 
 parser.add_argument('config', type=str, help='The config file path.')
@@ -103,16 +101,21 @@ if __name__ == '__main__':
     model = RandomlyConnectedModel(config['model']).to(device)
     loss_function = GeneratorLoss().to(device)
 
+    model_parameters = sum(p.numel() for p in model.parameters())
+    print(f'Model has {model_parameters:,} learnable parameters.')
+    print(f'Using CUDA? {next(model.parameters()).is_cuda}')
+
     if args.loss == 'adversarial':
-        disc = RandomDiscriminator(config['disc']).to(device)
+        disc = RandomDiscriminator(config['discriminator']).to(device)
         disc_loss_function = BCELoss().to(device)
+
+        disc_parameters = sum(p.numel() for p in disc.parameters())
+        print(f'Discriminator has {disc_parameters:,} learnable parameters.')
+        print(f'Using CUDA? {next(disc.parameters()).is_cuda}')
+
     else:
         disc = None
         disc_loss_function = None
-
-    numberof_parameters = sum(p.numel() for p in model.parameters())
-    print(f'Model has {numberof_parameters:,} learnable parameters.')
-    print(f'Using CUDA? {next(model.parameters()).is_cuda}')
 
     train.train_model(model, train_loader, loss_function, args.epochs,
                       args.learning_rate, disc, disc_loss_function,

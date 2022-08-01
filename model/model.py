@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch.nn as nn
 from torch import Tensor
@@ -9,14 +9,12 @@ from .encoder import RandomEncoder
 
 class RandomlyConnectedModel(nn.Module):
 
-    def __init__(self, nodes: Optional[int] = None,
-                 seed: Optional[int] = None,
-                 load_graph: Optional[str] = None) -> None:
+    def __init__(self, config: dict) -> None:
 
         super().__init__()
 
-        self.encoder = RandomEncoder(nodes, seed, load_graph)
-        self.decoder = DepthDecoder()
+        self.encoder = RandomEncoder(config['encoder'])
+        self.decoder = DepthDecoder(config['decoder'])
 
     def forward(self, image: Tensor, scale: float) -> Tuple[Tensor, ...]:
         encodings = self.encoder(image)

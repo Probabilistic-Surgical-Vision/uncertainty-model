@@ -104,7 +104,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
             disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
         else:
             disc_loss_per_image = None
-        
+
         if i % perceptual_update_freq == 0:
             disc_clone.load_state_dict(disc.state_dict())
 

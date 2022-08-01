@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -11,38 +11,27 @@ ImagePyramid = List[Tensor]
 
 
 class RandomDiscriminator(nn.Module):
-    def __init__(self, nodes: Optional[int] = None,
-                 seed: Optional[int] = None,
-                 load_graph: Optional[str] = None) -> None:
+    def __init__(self, config: dict) -> None:
 
         super().__init__()
 
-        self.enc1 = EncoderStage(in_channels=6, out_channels=32,
-                                 kernel_size=7, nodes=nodes, seed=seed,
-                                 stage=1, heads=8, load_graph=load_graph)
+        nodes = config['nodes']
+        seed = config['seed']
+        load_graph = config['load_graph']
 
-        self.enc2 = EncoderStage(in_channels=38, out_channels=64,
-                                 kernel_size=5, nodes=nodes, seed=seed,
-                                 stage=2, heads=8, load_graph=load_graph)
+        self.layers = nn.ModuleList()
 
-        self.enc3 = EncoderStage(in_channels=70, out_channels=128,
-                                 kernel_size=3, nodes=nodes, seed=seed,
-                                 stage=3, heads=8, load_graph=load_graph)
+        for i, layer_config in enumerate(config['layers']):
+            self.layers.append(EncoderStage(**layer_config, stage=(i+1),
+                                            nodes=nodes, seed=seed,
+                                            load_graph=load_graph))
 
-        self.enc4 = EncoderStage(in_channels=134, out_channels=256,
-                                 kernel_size=3, nodes=nodes, seed=seed,
-                                 stage=4, heads=8, load_graph=load_graph)
+        self.conv = EncoderStage(**config['conv'],
+                                 stage=(len(self.layers)+1),
+                                 nodes=nodes, seed=seed,
+                                 load_graph=load_graph)
 
-        self.enc5 = EncoderStage(in_channels=256, out_channels=256,
-                                 kernel_size=3, nodes=nodes, seed=seed,
-                                 stage=5, heads=8, load_graph=load_graph)
-
-        self.layers = nn.ModuleList([
-            self.enc1, self.enc2,
-            self.enc3, self.enc4
-        ])
-
-        self.linear = nn.Linear(in_features=32768, out_features=1)
+        self.linear = nn.Linear(config['linear-in-features'], 1)
 
     def features(self, lefts: ImagePyramid,
                  rights: ImagePyramid) -> ImagePyramid:
@@ -62,7 +51,7 @@ class RandomDiscriminator(nn.Module):
             features.append(out)
 
         # Final layer isn't part of the pyramid
-        out = self.enc5(out)
+        out = self.conv(out)
         features.append(out)
 
         return features
