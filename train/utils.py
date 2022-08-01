@@ -89,11 +89,16 @@ def reconstruct_pyramid(disparities: ImagePyramid, lefts: ImagePyramid,
     return left_recon_pyramid, right_recon_pyramid
 
 
-def adjust_disparity_scale(epoch: int, alpha: float = 0.03,
-                           beta: float = 0.15, min_scale: float = 0.3,
+def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
+                           step: float = 0.2, offset: float = 0.1,
+                           min_scale: float = 0.3,
                            max_scale: float = 1.0) -> float:
 
-    scale = (epoch * alpha) + beta
+    # Transform epoch to continuous scale using m and c
+    scale = (epoch * m) + c
+    # Quantise to fit the grid defined by step and offset
+    scale = (round((scale + offset) / step) * step) - offset
+    # Clip to between min and max bounds
     return np.clip(scale, min_scale, max_scale)
 
 
@@ -113,8 +118,7 @@ def combine_disparity(left: Tensor, right: Tensor, device: Device = 'cpu',
                       alpha: float = 20, beta: float = 0.05) -> Tensor:
 
     left_disp = left.cpu().numpy()
-    right_disp = np.fliplr(right.cpu().numpy())
-
+    right_disp = right.cpu().numpy()
     mean_disp = (left_disp + right_disp) / 2
 
     _, height, width = mean_disp.shape

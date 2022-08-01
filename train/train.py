@@ -1,5 +1,6 @@
 import os
 import os.path
+from copy import deepcopy
 from datetime import datetime
 from typing import List, Optional, Tuple
 
@@ -53,7 +54,8 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     disc_optimiser: Optional[Optimizer] = None,
                     disc_loss_function: Optional[Module] = None,
                     epoch_number: Optional[int] = None,
-                    scales: int = 4, device: Device = 'cpu') -> float:
+                    scales: int = 4, perceptual_update_freq: int = 10,
+                    device: Device = 'cpu', no_pbar: bool = False) -> float:
     model.train()
 
     running_model_loss = 0
@@ -63,8 +65,9 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         if loader.batch_size is not None else len(loader)
     description = f'Epoch #{epoch_number}' \
         if epoch_number is not None else 'Epoch'
+    disc_clone = deepcopy(disc) if disc is not None else None
 
-    tepoch = tqdm.tqdm(loader, description, unit='batch')
+    tepoch = tqdm.tqdm(loader, description, unit='batch', disable=no_pbar)
 
     for i, image_pair in enumerate(tepoch):
         model_optimiser.zero_grad()
@@ -82,7 +85,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                                               right_pyramid)
 
         model_loss = loss_function(image_pyramid, disparities,
-                                   recon_pyramid, i, disc)
+                                   recon_pyramid, i, disc_clone)
 
         model_loss.backward()
         model_optimiser.step()
@@ -101,6 +104,9 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
             disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
         else:
             disc_loss_per_image = None
+        
+        if i % perceptual_update_freq == 0:
+            disc_clone.load_state_dict(disc.state_dict())
 
         tepoch.set_postfix(model=model_loss_per_image,
                            disc=disc_loss_per_image,
@@ -115,12 +121,14 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 disc_loss_function: Optional[Module] = None,
                 scheduler_decay_rate: float = 0.1,
                 scheduler_step_size: int = 15,
+                perceptual_update_freq: int = 10,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
-                save_comparison_to: Optional[str] = None,
+                save_evaluation_to: Optional[str] = None,
                 save_every: Optional[int] = None,
-                save_path: Optional[str] = None,
-                device: Device = 'cpu') -> Tuple[List[float], List[float]]:
+                save_model_to: Optional[str] = None,
+                device: Device = 'cpu',
+                no_pbar: bool = False) -> Tuple[List[float], List[float]]:
 
     model_optimiser = Adam(model.parameters(), learning_rate)
 
@@ -133,19 +141,20 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     training_losses = []
     validation_losses = []
 
-    if save_path is not None:
+    if save_model_to is not None:
         date = datetime.now().strftime('%Y%m%d%H%M%S')
         folder = f'model_{date}'
-        model_directory = os.path.join(save_path, folder)
-        comparison_directory = os.path.join(save_comparison_to, folder)
+        model_directory = os.path.join(save_model_to, folder)
+        comparison_directory = os.path.join(save_evaluation_to, folder)
 
     for i in range(epochs):
         scale = u.adjust_disparity_scale(epoch=i)
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
                                scale, discriminator, disc_optimiser,
-                               disc_loss_function, epoch_number=(i+1),
-                               device=device)
+                               disc_loss_function, (i+1),
+                               perceptual_update_freq,
+                               device=device, no_pbar=no_pbar)
 
         training_losses.append(loss)
         scheduler.step()
@@ -162,7 +171,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
 
     print('Training completed.')
 
-    if save_path is not None:
+    if save_model_to is not None:
         save_model(model, model_directory, is_final=True)
 
     return training_losses, validation_losses

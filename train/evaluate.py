@@ -59,9 +59,10 @@ def create_comparison(image_pyramid: PyramidPair, disparities: ImagePyramid,
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
                    loss_function: Module, scale: float = 1.0,
-                   save_comparison_to: Optional[str] = None,
+                   save_evaluation_to: Optional[str] = None,
                    epoch: Optional[int] = None, is_final: bool = True,
-                   scales: int = 4, device: Device = 'cpu') -> float:
+                   scales: int = 4, device: Device = 'cpu',
+                   no_pbar: bool = False) -> float:
 
     running_loss = 0
 
@@ -69,7 +70,7 @@ def evaluate_model(model: Module, loader: DataLoader,
         if loader.batch_size is not None \
         else len(loader)
 
-    tepoch = tqdm.tqdm(loader, 'Evaluation', unit='batch')
+    tepoch = tqdm.tqdm(loader, 'Evaluation', unit='batch', disable=no_pbar)
 
     for i, image_pair in enumerate(tepoch):
         left = image_pair["left"].to(device)
@@ -84,17 +85,17 @@ def evaluate_model(model: Module, loader: DataLoader,
         recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
                                               right_pyramid)
 
-        loss = loss_function(image_pyramid, disparities, recon_pyramid)
+        loss = loss_function(image_pyramid, disparities, recon_pyramid, i)
 
         running_loss += loss.item()
 
         average_loss_per_image = running_loss / ((i+1) * batch_size)
         tepoch.set_postfix(loss=average_loss_per_image)
 
-        if save_comparison_to is not None and i == 0:
+        if save_evaluation_to is not None and i == 0:
             comparison = create_comparison(image_pyramid, disparities,
                                            recon_pyramid, device)
 
-            save_comparison(comparison, save_comparison_to, epoch, is_final)
+            save_comparison(comparison, save_evaluation_to, epoch, is_final)
 
     return average_loss_per_image
