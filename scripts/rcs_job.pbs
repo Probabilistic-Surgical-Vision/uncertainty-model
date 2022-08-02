@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #PBS -l walltime=00:30:00
-#PBS -l select=1:ncpus=4:ngpus=1:mem=24gb:gpu_type=RTX6000
+#PBS -l select=1:ncpus=4:ngpus=1:mem=50gb:gpu_type=RTX6000
 
 cd $PBS_O_WORKDIR
 
 module load anaconda3/personal
-anaconda-setup
-
-conda create -y --name tukra-model python=3.8.12
 source activate tukra-model
 
-python main.py config.yaml da-vinci --workers 4 --no-pbar
+python main.py config.yml da-vinci --epochs 50 --workers 4 \
+    --save-model-to $REPO_DIR/trained/da-vinci --save-model-every 10 \
+    --save-evaluation-to $REPO_DIR/results/da-vinci --evaluate-every 10 \
+    --home $BITBUCKET_HOME
