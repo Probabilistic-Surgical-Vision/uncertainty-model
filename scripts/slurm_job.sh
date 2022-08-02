@@ -23,4 +23,4 @@ uptime
 python main.py config.yml da-vinci --epochs 50 \
     --save-model-to $REPO_DIR/trained/da-vinci --save-model-every 10 \
     --save-evaluation-to $REPO_DIR/results/da-vinci --evaluate-every 10 \
-    --home $BITBUCKET_HOME --no-pbar
+    --home $BITBUCKET_HOME
