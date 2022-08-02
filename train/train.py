@@ -58,6 +58,9 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     device: Device = 'cpu', no_pbar: bool = False) -> float:
     model.train()
 
+    if disc is not None:
+        disc.train()
+
     running_model_loss = 0
     running_disc_loss = 0
 

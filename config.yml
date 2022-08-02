@@ -46,7 +46,7 @@ model:
       - in_channels: 256
         feature_in_channels: 64
         skip_in_channels: 256
-        upsample_channels: 64
+        upsample_channels: 32
         out_channels: 128
         skip_out_channels: 128
         concat_disp: true
