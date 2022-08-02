@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Union
 
 import matplotlib.pyplot as plt
 
@@ -9,8 +9,6 @@ import torch.nn.functional as F
 from torch import Tensor
 
 ImagePyramid = List[Tensor]
-PyramidPair = Tuple[ImagePyramid, ImagePyramid]
-TensorPair = Tuple[Tensor, Tensor]
 Device = Union[torch.device, str]
 
 
@@ -35,13 +33,8 @@ def scale_pyramid(x: Tensor, scales: int) -> ImagePyramid:
     return pyramid
 
 
-def detach_pyramid(pyramid: PyramidPair) -> PyramidPair:
-    left, right = pyramid
-    
-    left_detached = [layer.detach().clone() for layer in left]
-    right_detached = [layer.detach().clone() for layer in right]
-
-    return left_detached, right_detached
+def detach_pyramid(pyramid: ImagePyramid) -> ImagePyramid:
+    return [layer.detach().clone() for layer in pyramid]
 
 
 def reconstruct(disparity: Tensor, opposite_image: Tensor) -> Tensor:
@@ -80,22 +73,22 @@ def reconstruct_right_image(right_disparity: Tensor,
     return reconstruct(right_disparity, left_image)
 
 
-def reconstruct_pyramid(disparities: ImagePyramid, lefts: ImagePyramid,
-                        rights: ImagePyramid) -> PyramidPair:
+def reconstruct_pyramid(disparities: ImagePyramid,
+                        pyramid: ImagePyramid) -> ImagePyramid:
 
-    left_recon_pyramid = []
-    right_recon_pyramid = []
+    recon_pyramid = []
 
-    for left, right, disparity in zip(lefts, rights, disparities):
+    for disparity, images in zip(disparities, pyramid):
         left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+        left_image, right_image = torch.split(images, [3, 3], 1)
 
-        left_recon = reconstruct_left_image(left_disp, right)
-        right_recon = reconstruct_right_image(right_disp, left)
+        left_recon = reconstruct_left_image(left_disp, right_image)
+        right_recon = reconstruct_right_image(right_disp, left_image)
 
-        left_recon_pyramid.append(left_recon)
-        right_recon_pyramid.append(right_recon)
+        recon_image = torch.cat([left_recon, right_recon], dim=1)
+        recon_pyramid.append(recon_image)
 
-    return left_recon_pyramid, right_recon_pyramid
+    return recon_pyramid
 
 
 def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,

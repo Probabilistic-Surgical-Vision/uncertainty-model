@@ -33,19 +33,15 @@ class RandomDiscriminator(nn.Module):
 
         self.linear = nn.Linear(config['linear-in-features'], 1)
 
-    def features(self, lefts: ImagePyramid,
-                 rights: ImagePyramid) -> ImagePyramid:
-
-        pyramid_iterator = zip(lefts, rights, self.layers)
+    def features(self, pyramid: ImagePyramid) -> ImagePyramid:
         features = []
 
-        for i, (left, right, layer) in enumerate(pyramid_iterator):
-            stereo_concat = torch.cat((left, right), dim=1)
-
+        pyramid_iterator = zip(pyramid, self.layers)
+        for i, (images, layer) in enumerate(pyramid_iterator):
             if i == 0:
-                out = layer(stereo_concat)
+                out = layer(images)
             else:
-                feature_concat = torch.cat((out, stereo_concat), dim=1)
+                feature_concat = torch.cat((out, images), dim=1)
                 out = layer(feature_concat)
 
             features.append(out)
@@ -56,8 +52,8 @@ class RandomDiscriminator(nn.Module):
 
         return features
 
-    def forward(self, lefts: ImagePyramid, rights: ImagePyramid) -> Tensor:
-        out = self.features(lefts, rights)[-1]
+    def forward(self, pyramid: ImagePyramid) -> Tensor:
+        out = self.features(pyramid)[-1]
         out = out.view(out.size(0), -1)
 
         out = self.linear(out)

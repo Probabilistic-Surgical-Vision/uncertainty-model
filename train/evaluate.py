@@ -11,7 +11,7 @@ from torchvision.utils import make_grid, save_image
 import tqdm
 
 from . import utils as u
-from .utils import Device, ImagePyramid, PyramidPair
+from .utils import Device, ImagePyramid
 
 
 def save_comparison(comparison: Tensor, directory: str,
@@ -27,31 +27,30 @@ def save_comparison(comparison: Tensor, directory: str,
     save_image(comparison, filepath)
 
 
-def create_comparison(image_pyramid: PyramidPair, disparities: ImagePyramid,
-                      recon_pyramid: PyramidPair,
+def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
+                      recon_pyramid: ImagePyramid,
                       device: Device = 'cpu') -> Tensor:
 
-    left_pyramid, right_pyramid = image_pyramid
-    left_recon_pyramid, right_recon_pyramid = recon_pyramid
-
     # Get the largest scale image from the pyramids
-    left, right = left_pyramid[0], right_pyramid[0]
+    left_image, right_image = torch.split(image_pyramid[0], [3, 3], 1)
     left_disp, right_disp = torch.split(disparities[0], [1, 1], 1)
-    left_recon, right_recon = left_recon_pyramid[0], right_recon_pyramid[0]
+    left_recon, right_recon = torch.split(recon_pyramid[0], [3, 3], 1)
 
+    left_heat_disp = u.to_heatmap(left_disp[0], device)
+    right_heat_disp = u.to_heatmap(right_disp[0], device)
+
+    # Combine disparity in stereo and increase contrast
     disp = u.combine_disparity(left_disp[0], right_disp[0], device)
-    # Scale up to increase disparity contrast
     scaled_disp = (disp - disp.min()) / (disp.max() - disp.min())
 
-    left_disp = u.to_heatmap(left_disp[0], device)
-    right_disp = u.to_heatmap(right_disp[0], device)
-    disp = u.to_heatmap(disp, device)
-    scaled_disp = u.to_heatmap(scaled_disp, device)
+    heat_disp = u.to_heatmap(disp, device)
+    scaled_heat_disp = u.to_heatmap(scaled_disp, device)
 
-    grid = torch.stack((left[0], right[0],
-                       left_disp, right_disp,
-                       disp, scaled_disp,
-                       left_recon[0], right_recon[0]))
+    grid = torch.stack((
+        left_image[0], right_image[0],
+        left_heat_disp, right_heat_disp,
+        heat_disp, scaled_heat_disp,
+        left_recon[0], right_recon[0]))
 
     return make_grid(grid, nrow=2)
 
@@ -77,15 +76,12 @@ def evaluate_model(model: Module, loader: DataLoader,
         left = image_pair["left"].to(device)
         right = image_pair["right"].to(device)
 
-        left_pyramid = u.scale_pyramid(left, scales)
-        right_pyramid = u.scale_pyramid(right, scales)
+        images = torch.cat([left, right], dim=1)
+        image_pyramid = u.scale_pyramid(images, scales)
 
         disparities = model(left, scale)
 
-        image_pyramid = (left_pyramid, right_pyramid)
-        recon_pyramid = u.reconstruct_pyramid(disparities, left_pyramid,
-                                              right_pyramid)
-
+        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
         loss = loss_function(image_pyramid, disparities, recon_pyramid, i)
 
         running_loss += loss.item()

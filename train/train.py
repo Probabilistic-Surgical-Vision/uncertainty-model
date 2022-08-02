@@ -15,19 +15,19 @@ import tqdm
 
 from .evaluate import evaluate_model
 from . import utils as u
-from .utils import Device, PyramidPair
+from .utils import Device, ImagePyramid
 
 
 def run_discriminator(discriminator: Module, disc_loss_function: Module,
-                      image_pyramid: PyramidPair,
-                      recon_pyramid: PyramidPair) -> Tensor:
+                      image_pyramid: ImagePyramid,
+                      recon_pyramid: ImagePyramid) -> Tensor:
 
-    real_pred = discriminator(*image_pyramid)
+    real_pred = discriminator(image_pyramid)
     real_labels = torch.ones_like(real_pred)
 
     real_loss = disc_loss_function(real_pred, real_labels)
 
-    fake_pred = discriminator(*recon_pyramid)
+    fake_pred = discriminator(recon_pyramid)
     fake_labels = torch.zeros_like(fake_pred)
 
     fake_loss = disc_loss_function(fake_pred, fake_labels)
@@ -78,14 +78,14 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
 
-        left_pyramid = u.scale_pyramid(left, scales)
-        right_pyramid = u.scale_pyramid(right, scales)
+        images = torch.cat([left, right], dim=1)
+        image_pyramid = u.scale_pyramid(images, scales)
 
         disparities = model(left, scale)
 
-        image_pyramid = (left_pyramid, right_pyramid)
-        recon_pyramid = u.reconstruct_pyramid(disparities, *image_pyramid)
-        disc_recon_pyramid = u.detach_pyramid(recon_pyramid)
+        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
+        disc_recon_pyramid = u.detach_pyramid(recon_pyramid) \
+            if disc is not None else None
 
         model_loss = loss_function(image_pyramid, disparities,
                                    recon_pyramid, i, disc_clone)

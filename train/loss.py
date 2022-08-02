@@ -6,8 +6,9 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
 
+from .utils import ImagePyramid
+
 from . import utils as u
-from .utils import PyramidPair, TensorPair
 
 
 class WeightedSSIMLoss(nn.Module):
@@ -47,17 +48,12 @@ class WeightedSSIMLoss(nn.Module):
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
         return (1 - self.ssim(x, y)) / 2
 
-    def forward(self, original: TensorPair,
-                reconstructed: TensorPair) -> Tensor:
+    def forward(self, images: Tensor, recon: Tensor) -> Tensor:
+        left_l1_loss = u.l1_loss(images[:, 0:3], recon[:, 0:3])
+        right_l1_loss = u.l1_loss(images[:, 3:6], recon[:, 3:6])
 
-        left_image, right_image = original
-        left_recon, right_recon = reconstructed
-
-        left_l1_loss = u.l1_loss(left_image, left_recon)
-        right_l1_loss = u.l1_loss(right_image, right_recon)
-
-        left_ssim_loss = self.dssim(left_image, left_recon)
-        right_ssim_loss = self.dssim(right_image, right_recon)
+        left_ssim_loss = self.dssim(images[:, 0:3], recon[:, 0:3])
+        right_ssim_loss = self.dssim(images[:, 3:6], recon[:, 3:6])
 
         total_l1_loss = torch.sum(left_l1_loss + right_l1_loss)
         total_ssim_loss = torch.sum(left_ssim_loss + right_ssim_loss)
@@ -70,14 +66,12 @@ class ConsistencyLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, disparities: TensorPair) -> Tensor:
-        left_disp, right_disp = disparities
+    def forward(self, disp: Tensor) -> Tensor:
+        left_lr_disp = u.reconstruct_left_image(disp[:, 0:1], disp[:, 1:2])
+        right_lr_disp = u.reconstruct_right_image(disp[:, 1:2], disp[:, 0:1])
 
-        left_lr_disp = u.reconstruct_left_image(left_disp, right_disp)
-        right_lr_disp = u.reconstruct_right_image(right_disp, left_disp)
-
-        left_con_loss = u.l1_loss(left_disp, left_lr_disp)
-        right_con_loss = u.l1_loss(right_disp, right_lr_disp)
+        left_con_loss = u.l1_loss(disp[:, 0:1], left_lr_disp)
+        right_con_loss = u.l1_loss(disp[:, 1:2], right_lr_disp)
 
         return torch.sum(left_con_loss + right_con_loss)
 
@@ -114,12 +108,9 @@ class SmoothnessLoss(nn.Module):
 
         return smoothness_x.abs() + smoothness_y.abs()
 
-    def forward(self, disparities: TensorPair, images: TensorPair) -> Tensor:
-        left_disp, right_disp = disparities
-        left_image, right_image = images
-
-        smooth_left_loss = self.smoothness_loss(left_disp, left_image)
-        smooth_right_loss = self.smoothness_loss(right_disp, right_image)
+    def forward(self, disp: Tensor, images: Tensor) -> Tensor:
+        smooth_left_loss = self.smoothness_loss(disp[:, 0:1], images[:, 0:3])
+        smooth_right_loss = self.smoothness_loss(disp[:, 1:2], images[:, 3:6])
 
         return torch.sum(smooth_left_loss + smooth_right_loss)
 
@@ -128,16 +119,13 @@ class PerceptualLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, image_pyramid: PyramidPair,
-                recon_pyramid: PyramidPair, disc: Module) -> Tensor:
+    def forward(self, image_pyramid: ImagePyramid,
+                recon_pyramid: ImagePyramid, disc: Module) -> Tensor:
 
         perceptual_loss = 0
 
-        left_image_pyramid, right_image_pyramid = image_pyramid
-        left_recon_pyramid, right_recon_pyramid = recon_pyramid
-
-        image_maps = disc.features(left_image_pyramid, right_image_pyramid)
-        recon_maps = disc.features(left_recon_pyramid, right_recon_pyramid)
+        image_maps = disc.features(image_pyramid)
+        recon_maps = disc.features(recon_pyramid)
 
         for image_map, recon_map in zip(image_maps, recon_maps):
             perceptual_loss += u.l1_loss(image_map, recon_map)
@@ -154,10 +142,10 @@ class AdversarialLoss(nn.Module):
 
         self.perceptual_start = perceptual_start
 
-    def forward(self, image_pyramid: PyramidPair, recon_pyramid: PyramidPair,
+    def forward(self, image_pyramid: ImagePyramid, recon_pyramid: ImagePyramid,
                 discriminator: Module, epoch: int) -> Tensor:
 
-        predictions = discriminator(*recon_pyramid)
+        predictions = discriminator(recon_pyramid)
         labels = torch.ones_like(predictions)
 
         loss = self.adversarial(predictions, labels)
@@ -195,9 +183,9 @@ class GeneratorLoss(nn.Module):
         self.smoothness_weight = smoothness_weight
         self.adversarial_weight = adversarial_weight
 
-    def forward(self, image_pyramid: PyramidPair,
+    def forward(self, image_pyramid: ImagePyramid,
                 disparities: Tuple[Tensor, ...],
-                recon_pyramid: PyramidPair, epoch: int,
+                recon_pyramid: ImagePyramid, epoch: int,
                 discriminator: Optional[Module] = None) -> Tensor:
 
         reprojection_loss = 0
@@ -205,17 +193,12 @@ class GeneratorLoss(nn.Module):
         smoothness_loss = 0
         adversarial_loss = 0
 
-        image_tuples = zip(*image_pyramid)
-        recon_tuples = zip(*recon_pyramid)
+        scales = zip(image_pyramid, disparities, recon_pyramid)
 
-        scales = zip(image_tuples, disparities, recon_tuples)
-
-        for i, (image_tuple, disparity, recon_tuple) in enumerate(scales):
-            disp_tuple = torch.split(disparity, [1, 1], 1)
-
-            reprojection_loss += self.wssim(image_tuple, recon_tuple)
-            consistency_loss += self.consistency(disp_tuple) / (2 ** i)
-            smoothness_loss += self.smoothness(disp_tuple, image_tuple)
+        for i, (images, disparity, recon_images) in enumerate(scales):
+            reprojection_loss += self.wssim(images, recon_images)
+            consistency_loss += self.consistency(disparity) / (2 ** i)
+            smoothness_loss += self.smoothness(disparity, images)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
