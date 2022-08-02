@@ -34,7 +34,7 @@ parser.add_argument('--training-size', default=None, nargs='?', type=int,
                     help='The number of samples to train with.')
 parser.add_argument('--validation-size', default=None, nargs='?', type=int,
                     help='The number of samples to evaluate with.')
-parser.add_argument('--workers', default=4, type=int,
+parser.add_argument('--workers', default=8, type=int,
                     help='The number of workers to use for the dataloader.')
 parser.add_argument('--save-model-to', default=None, type=str,
                     help='The path to save models to.')

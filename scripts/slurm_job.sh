@@ -20,7 +20,7 @@ TERM=vt100
 /usr/bin/nvidia-smi
 uptime
 
-python main.py config.yml da-vinci --epochs 50 \
+python main.py config.yml da-vinci --epochs 50 --workers 4 \
     --save-model-to $REPO_DIR/trained/da-vinci --save-model-every 10 \
     --save-evaluation-to $REPO_DIR/results/da-vinci --evaluate-every 10 \
     --home $BITBUCKET_HOME
