@@ -9,6 +9,8 @@
 BITBUCKET_HOME=/vol/bitbucket/lem3617
 REPO_DIR=$BITBUCKET_HOME/tukra-model
 
+cd $REPO_DIR
+
 export PATH=$REPO_DIR/venv/bin/:$PATH
 
 source activate
