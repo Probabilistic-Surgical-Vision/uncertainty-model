@@ -49,7 +49,8 @@ class NodeBlock(nn.Module):
         self.numberof_inputs = len(node.inputs)
 
         initial_means = torch.ones(self.numberof_inputs)
-        self.mean_weight = nn.Parameter(initial_means)
+        self.mean_weight = nn.Parameter(initial_means) \
+            if self.numberof_inputs > 1 else None
 
         if node.node_type == 'input':
             stride = 2

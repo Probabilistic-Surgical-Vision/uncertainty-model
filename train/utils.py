@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
+from torch.nn import Module
 
 ImagePyramid = List[Tensor]
 Device = Union[torch.device, str]
@@ -91,6 +92,10 @@ def reconstruct_pyramid(disparities: ImagePyramid,
     return recon_pyramid
 
 
+def concatenate_pyramids(a: ImagePyramid, b: ImagePyramid) -> ImagePyramid:
+    return [torch.cat((x, y), 0) for x, y in zip(a, b)]
+
+
 def adjust_disparity_scale(epoch: int, m: float = 0.02, c: float = 0.0,
                            step: float = 0.2, offset: float = 0.1,
                            min_scale: float = 0.3,
@@ -139,3 +144,20 @@ def combine_disparity(left: Tensor, right: Tensor, device: Device = 'cpu',
         + (mean_mask * mean_disp)
 
     return torch.from_numpy(combined_disparity).to(device)
+
+
+def run_discriminator(image_pyramid: ImagePyramid,
+                      recon_pyramid: ImagePyramid,
+                      discriminator: Module,
+                      disc_loss_function: Module,
+                      batch_size: int) -> Tensor:
+
+    recon_pyramid = detach_pyramid(recon_pyramid)
+    pyramid = concatenate_pyramids(image_pyramid, recon_pyramid)
+
+    predictions = discriminator(pyramid)
+
+    labels = torch.zeros_like(predictions)
+    labels[:batch_size] = 1
+
+    return disc_loss_function(predictions, labels) / 2

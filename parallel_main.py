@@ -4,7 +4,11 @@ import os
 from datetime import datetime
 
 import torch
-from torch.nn import BCELoss
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn import BCELoss, SyncBatchNorm
+from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
@@ -39,8 +43,6 @@ parser.add_argument('--training-size', default=None, nargs='?', type=int,
                     help='The number of samples to train with.')
 parser.add_argument('--validation-size', default=None, nargs='?', type=int,
                     help='The number of samples to evaluate with.')
-parser.add_argument('--workers', default=8, type=int,
-                    help='The number of workers to use for the dataloader.')
 parser.add_argument('--save-model-to', default=None, type=str,
                     help='The path to save models to.')
 parser.add_argument('--save-evaluation-to', default=None, type=str,
@@ -58,19 +60,38 @@ parser.add_argument('--no-augment', action='store_true', default=False,
 parser.add_argument('--home', default=os.environ["HOME"], type=str,
                     help='Override the home directory (to find datasets).')
 
+# Distributed Data Parallel arguments
+parser.add_argument('--number-of-nodes', default=1, type=int,
+                    help='The number of nodes available.')
+parser.add_argument('--number-of-gpus', default=1, type=int,
+                    help='The number of GPUs available.')
+parser.add_argument('--global-rank', default=0, type=int,
+                    help='The global rank of the node running this program.')
+parser.add_argument('--master-address', default='localhost', type=str,
+                    help='The IP address to spawn processes from.')
+parser.add_argument('--master-port', default=3000, type=int,
+                    help='The port for processes to communicate through.')
+parser.add_argument('--init-seed', default=0, type=int,
+                    help='Set the manual seed for initialising models.')
 
-def main(args: argparse.Namespace):
-    print("Arguments passed:")
-    for key, value in vars(args).items():
-        print(f'\t- {key}: {value}')
+
+def main(gpu_index: int, args: argparse.Namespace):
+    rank = (args.global_rank * args.number_of_gpus) + gpu_index
+    print(f"Process with global rank {rank} starting.")
+    dist.init_process_group(backend='nccl', init_method='env://',
+                            world_size=args.world_size, rank=rank)
+
+    torch.manual_seed(args.init_seed)
+
+    if rank == 0:
+        print("Arguments passed:")
+        for key, value in vars(args).items():
+            print(f'\t- {key}: {value}')
 
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
     dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
         else CityScapesDataset
-
-    device = torch.device('cuda') if torch.cuda.is_available() \
-        and not args.no_cuda else torch.device('cpu')
 
     with open(args.config) as f:
         config = yaml.load(f, Loader=yaml.Loader)
@@ -95,29 +116,49 @@ def main(args: argparse.Namespace):
     val_dataset = dataset_class(dataset_path, val_label,
                                 no_augment_transform, args.validation_size)
 
-    print(f'Dataset size:'
-          f'\n\tTrain: {len(train_dataset):,} images.'
-          f'\n\tTest: {len(val_dataset):,} images.')
+    if rank == 0:
+        print(f'Dataset size:'
+              f'\n\tTrain: {len(train_dataset):,} images.'
+              f'\n\tTest: {len(val_dataset):,} images.')
+
+    train_sampler = DistributedSampler(train_dataset, rank=rank,
+                                       num_replicas=args.world_size)
+
+    val_sampler = DistributedSampler(val_dataset, rank=rank,
+                                     num_replicas=args.world_size)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
-                              shuffle=True, num_workers=args.workers)
+                              sampler=train_sampler)
+
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
-                            shuffle=False, num_workers=args.workers)
+                            sampler=val_sampler)
+
+    device = torch.device(f'cuda:{gpu_index}') \
+        if torch.cuda.is_available() and not args.no_cuda \
+        else torch.device('cpu')
 
     model = RandomlyConnectedModel(config['model']).to(device)
+    model = SyncBatchNorm.convert_sync_batchnorm(model)
+    model = DistributedDataParallel(model, device_ids=[gpu_index])
+
     loss_function = GeneratorLoss().to(device)
 
-    model_parameters = sum(p.numel() for p in model.parameters())
-    print(f'Model has {model_parameters:,} learnable parameters.'
-          f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
+    if rank == 0:
+        model_parameters = sum(p.numel() for p in model.parameters())
+        print(f'Model has {model_parameters:,} learnable parameters.'
+              f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
     if args.loss == 'adversarial':
         disc = RandomDiscriminator(config['discriminator']).to(device)
+        disc = SyncBatchNorm.convert_sync_batchnorm(disc)
+        disc = DistributedDataParallel(disc, device_ids=[gpu_index])
+
         disc_loss_function = BCELoss().to(device)
 
-        disc_parameters = sum(p.numel() for p in disc.parameters())
-        print(f'Discriminator has {disc_parameters:,} learnable parameters.'
-              f'\n\tUsing CUDA? {next(disc.parameters()).is_cuda}')
+        if rank == 0:
+            disc_parameters = sum(p.numel() for p in disc.parameters())
+            print(f'Disc has {disc_parameters:,} learnable parameters.'
+                  f'\n\tUsing CUDA? {next(disc.parameters()).is_cuda}')
 
     else:
         disc = None
@@ -126,13 +167,13 @@ def main(args: argparse.Namespace):
     date = datetime.now().strftime('%Y%m%d%H%M%S')
     folder = f'model_{date}'
 
-    if args.save_model_to is not None:
+    if args.save_model_to is not None and rank == 0:
         model_directory = os.path.join(args.save_model_to, folder)
         os.makedirs(model_directory, exist_ok=True)
     else:
         model_directory = None
     
-    if args.save_evaluation_to is not None:
+    if args.save_evaluation_to is not None and rank == 0:
         results_directory = os.path.join(args.save_evaluation_to, folder)
         os.makedirs(results_directory, exist_ok=True)
     else:
@@ -144,20 +185,20 @@ def main(args: argparse.Namespace):
                        save_evaluation_to=results_directory,
                        save_every=args.save_model_every,
                        evaluate_every=args.evaluate_every,
-                       device=device, no_pbar=args.no_pbar)
+                       device=device, no_pbar=args.no_pbar, rank=rank)
 
     training_losses, validation_losses = loss
-    model_train_losses, disc_train_losses = zip(*training_losses)
+    model_losses, disc_losses = zip(*training_losses)
     model_val_losses, disc_val_losses = zip(*validation_losses)
 
     losses_filepath = os.path.join(results_directory, 'loss.json')
 
-    if results_directory is not None:
+    if results_directory is not None and rank == 0:
         with open(losses_filepath, 'w') as f:
             losses_dict = {
                 'training': {
-                    'model': model_train_losses,
-                    'discriminator': disc_train_losses
+                    'model': model_losses,
+                    'discriminator': disc_losses
                 },
                 'validation': {
                     'model': model_val_losses,
@@ -169,4 +210,12 @@ def main(args: argparse.Namespace):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    main(args)
+    if args.number_of_nodes > 1:
+        raise ValueError('Running more than one node is not supported.')
+
+    args.world_size = args.number_of_nodes * args.number_of_gpus
+
+    os.environ['MASTER_ADDR'] = args.master_address
+    os.environ['MASTER_PORT'] = str(args.master_port)
+
+    mp.spawn(main, nprocs=args.number_of_gpus, args=(args,))

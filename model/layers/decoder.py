@@ -127,8 +127,8 @@ class DecoderStage(nn.Module):
         self.iconv = ConvELUBlock(iconv_in_channels, out_channels,
                                   batch_norm=batch_norm)
 
-        self.disp_conv = ConvLayer(out_channels, disp_channels,
-                                   sigmoid=True)
+        self.disp = ConvLayer(out_channels, disp_channels, sigmoid=True) \
+            if self.calculate_disp else None
 
     def forward(self, x: Tensor, feature_map: Tensor, skip: Tensor,
                 disparity: Optional[Tensor] = None,
@@ -150,7 +150,7 @@ class DecoderStage(nn.Module):
 
         out = self.iconv(x_concat)
 
-        disparity = scale * self.disp_conv(out) \
+        disparity = scale * self.disp(out) \
             if self.calculate_disp else None
 
         return out, skip, disparity

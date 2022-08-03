@@ -21,7 +21,7 @@ def save_comparison(comparison: Tensor, directory: str,
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
 
-    filename = 'final.png' if is_final else f'epoch_{epoch+1}.png'
+    filename = 'final.png' if is_final else f'epoch_{epoch+1:03}.png'
     filepath = os.path.join(directory, filename)
 
     save_image(comparison, filepath)
@@ -58,19 +58,27 @@ def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
                    loss_function: Module, scale: float = 1.0,
+                   disc: Optional[Module] = None,
+                   disc_loss_function: Optional[Module] = None, 
                    save_evaluation_to: Optional[str] = None,
-                   epoch: Optional[int] = None, is_final: bool = True,
+                   epoch_number: Optional[int] = None,
+                   is_final: bool = True,
                    scales: int = 4, device: Device = 'cpu',
-                   no_pbar: bool = False) -> float:
+                   no_pbar: bool = False, rank: int = 0) -> float:
 
-    running_loss = 0
+    running_model_loss = 0
+    running_disc_loss = 0
+
+    model_loss_per_image = None
+    disc_loss_per_image = None
 
     batch_size = loader.batch_size \
         if loader.batch_size is not None \
         else len(loader)
 
     description = 'Evaluation'
-    tepoch = tqdm.tqdm(loader, description, unit='batch', disable=no_pbar)
+    tepoch = tqdm.tqdm(loader, description, unit='batch',
+                       disable=(no_pbar or rank > 0))
 
     for i, image_pair in enumerate(tepoch):
         left = image_pair["left"].to(device)
@@ -82,22 +90,38 @@ def evaluate_model(model: Module, loader: DataLoader,
         disparities = model(left, scale)
 
         recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
-        loss = loss_function(image_pyramid, disparities, recon_pyramid, i)
+        model_loss = loss_function(image_pyramid, disparities,
+                                   recon_pyramid, i, disc)
 
-        running_loss += loss.item()
+        if disc is not None:
+            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
+                                            disc, disc_loss_function,
+                                            batch_size)
 
-        average_loss_per_image = running_loss / ((i+1) * batch_size)
-        tepoch.set_postfix(loss=average_loss_per_image)
+        if rank > 0:
+            continue
+
+        running_model_loss += model_loss.item()
+        model_loss_per_image = running_model_loss / ((i+1) * batch_size)
+
+        if disc is not None:
+            running_disc_loss += disc_loss.item()
+            disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
+
+        tepoch.set_postfix(loss=model_loss_per_image,
+                           disc=disc_loss_per_image,
+                           scale=scale)
 
         if save_evaluation_to is not None and i == 0:
             comparison = create_comparison(image_pyramid, disparities,
                                            recon_pyramid, device)
 
-            save_comparison(comparison, save_evaluation_to, epoch, is_final)
+            save_comparison(comparison, save_evaluation_to,
+                            epoch_number, is_final)
 
-    if no_pbar:
+    if no_pbar and rank == 0:
         print(f"{description}:"
-              f"\n\tmodel loss: {average_loss_per_image:.2e}"
+              f"\n\tmodel loss: {model_loss_per_image:.2e}"
               f"\n\tdisparity scale: {scale:.2f}")
 
-    return average_loss_per_image
+    return model_loss_per_image, disc_loss_per_image
