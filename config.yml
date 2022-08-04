@@ -43,6 +43,7 @@ model:
         skip_out_channels: 256
         concat_disp: false
         calculate_disp: true
+        disp_channels: 4
       - in_channels: 256
         feature_in_channels: 64
         skip_in_channels: 256
@@ -51,6 +52,7 @@ model:
         skip_out_channels: 128
         concat_disp: true
         calculate_disp: true
+        disp_channels: 4
       - in_channels: 128
         feature_in_channels: 32
         skip_in_channels: 128
@@ -59,6 +61,7 @@ model:
         skip_out_channels: 64
         concat_disp: true
         calculate_disp: true
+        disp_channels: 4
       - in_channels: 64
         feature_in_channels: 3
         skip_in_channels: 64
@@ -67,6 +70,7 @@ model:
         skip_out_channels: 32
         concat_disp: true
         calculate_disp: true
+        disp_channels: 4
 
 discriminator:
   load_graph: graphs/nodes_5_seed_42
@@ -95,3 +99,15 @@ discriminator:
       kernel_size: 3
       heads: 8
   linear-in-features: 32768
+
+loss:
+  wssim_weight: 1.0
+  consistency_weight: 1.0
+  smoothness_weight: 1.0
+  adversarial_weight: 0.85
+  predictive_error_weight: 1.0
+  wssim_alpha: 0.85
+  perceptual_start: 5
+  adversarial_loss_type: mse
+  error_loss_type: bayesian
+  error_smoothness: true

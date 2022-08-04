@@ -21,7 +21,7 @@ from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import GeneratorLoss
+from train.loss import ModelLoss
 
 
 parser = argparse.ArgumentParser()
@@ -37,9 +37,8 @@ parser.add_argument('--learning-rate', '-lr', default=1e-4, type=float,
                     help='The initial learning rate for training.')
 parser.add_argument('--batch-size', '-b', default=8, type=int,
                     help='The batch size to train/evaluate the model with.')
-parser.add_argument('--loss', '-l', choices=['monodepth', 'adversarial'],
-                    default='monodepth', help='The loss function to use '
-                    '(must be either "monodepth" or "adversarial").')
+parser.add_argument('--adversarial', action='store_true', default=False,
+                    help='Train the model with a discriminator.')
 parser.add_argument('--workers', '-w', default=8, type=int,
                     help='The number of workers to use for the dataloader.')
 parser.add_argument('--training-size', default=None, nargs='?', type=int,
@@ -90,7 +89,7 @@ def main(gpu_index: int, args: argparse.Namespace):
         for key, value in vars(args).items():
             print(f'\t- {key}: {value}')
 
-        print('Live Processes')
+        print('Live Processes:')
         for p in psutil.process_iter():
             created = datetime.fromtimestamp(p.create_time())
             created_time = created.strftime('%H:%M:%S')
@@ -151,14 +150,14 @@ def main(gpu_index: int, args: argparse.Namespace):
     model = SyncBatchNorm.convert_sync_batchnorm(model)
     model = DistributedDataParallel(model, device_ids=[gpu_index])
 
-    loss_function = GeneratorLoss().to(device)
+    loss_function = ModelLoss(**config['loss']).to(device)
 
     if rank == 0:
         model_parameters = sum(p.numel() for p in model.parameters())
         print(f'Model has {model_parameters:,} learnable parameters.'
               f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
-    if args.loss == 'adversarial':
+    if args.adversarial:
         disc = RandomDiscriminator(config['discriminator']).to(device)
         disc = SyncBatchNorm.convert_sync_batchnorm(disc)
         disc = DistributedDataParallel(disc, device_ids=[gpu_index])
