@@ -167,6 +167,7 @@ def main(args: argparse.Namespace):
 
             json.dump(losses_dict, f, indent=4)
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
     main(args)

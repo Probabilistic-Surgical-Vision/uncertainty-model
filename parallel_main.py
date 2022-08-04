@@ -95,9 +95,10 @@ def main(gpu_index: int, args: argparse.Namespace):
             if 'python' not in p.name():
                 continue
 
-            created = datetime.fromtimestamp(p.create_time())
-            created_time = created.strftime('%H:%M:%S')
-            print(f'\t- {p.name()}: created at {created_time}')
+            created = datetime.fromtimestamp(p.create_time()) \
+                .strftime('%d-%m-%Y %H:%M:%S')
+
+            print(f'\t- {p.name()} ({p.pid}) created {created}.')
 
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
@@ -185,7 +186,7 @@ def main(gpu_index: int, args: argparse.Namespace):
         os.makedirs(model_directory, exist_ok=True)
     else:
         model_directory = None
-    
+
     if args.save_evaluation_to is not None and rank == 0:
         results_directory = os.path.join(args.save_evaluation_to, folder)
         os.makedirs(results_directory, exist_ok=True)
@@ -220,6 +221,7 @@ def main(gpu_index: int, args: argparse.Namespace):
             }
 
             json.dump(losses_dict, f, indent=4)
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
