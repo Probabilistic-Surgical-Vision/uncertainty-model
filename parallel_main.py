@@ -40,6 +40,8 @@ parser.add_argument('--batch-size', '-b', default=8, type=int,
 parser.add_argument('--loss', '-l', choices=['monodepth', 'adversarial'],
                     default='monodepth', help='The loss function to use '
                     '(must be either "monodepth" or "adversarial").')
+parser.add_argument('--workers', '-w', default=8, type=int,
+                    help='The number of workers to use for the dataloader.')
 parser.add_argument('--training-size', default=None, nargs='?', type=int,
                     help='The number of samples to train with.')
 parser.add_argument('--validation-size', default=None, nargs='?', type=int,
@@ -134,9 +136,11 @@ def main(gpu_index: int, args: argparse.Namespace):
                                      num_replicas=args.world_size)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
+                              num_workers=args.workers,
                               sampler=train_sampler)
 
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
+                            num_workers=args.workers,
                             sampler=val_sampler)
 
     device = torch.device(f'cuda:{gpu_index}') \
