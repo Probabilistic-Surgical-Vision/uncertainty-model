@@ -80,7 +80,7 @@ def reconstruct_pyramid(disparities: ImagePyramid,
     recon_pyramid = []
 
     for disparity, images in zip(disparities, pyramid):
-        left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+        left_disp, right_disp = torch.split(disparity[:,:2], [1, 1], 1)
         left_image, right_image = torch.split(images, [3, 3], 1)
 
         left_recon = reconstruct_left_image(left_disp, right_image)
