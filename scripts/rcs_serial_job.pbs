@@ -8,7 +8,7 @@ cd $PBS_O_WORKDIR
 module load anaconda3/personal
 source activate tukra-env
 
-python main.py config.yml da-vinci --epochs 50 \
+python main.py config.yml da-vinci -b 8 -e 200 -lr 0.0004 \
     --save-model-to trained/da-vinci --save-model-every 10 \
     --save-evaluation-to results/da-vinci --evaluate-every 10 \
     --home /rds/general/user/lem3617/home

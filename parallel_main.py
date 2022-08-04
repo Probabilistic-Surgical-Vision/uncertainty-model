@@ -1,5 +1,6 @@
 import argparse
 import os
+import psutil
 
 from datetime import datetime
 
@@ -77,16 +78,21 @@ parser.add_argument('--init-seed', default=0, type=int,
 
 def main(gpu_index: int, args: argparse.Namespace):
     rank = (args.global_rank * args.number_of_gpus) + gpu_index
-    print(f"Process with global rank {rank} starting.")
     dist.init_process_group(backend='nccl', init_method='env://',
                             world_size=args.world_size, rank=rank)
 
     torch.manual_seed(args.init_seed)
 
     if rank == 0:
-        print("Arguments passed:")
+        print('Arguments passed:')
         for key, value in vars(args).items():
             print(f'\t- {key}: {value}')
+
+        print('Live Processes')
+        for p in psutil.process_iter():
+            created = datetime.fromtimestamp(p.create_time())
+            created_time = created.strftime('%H:%M:%S')
+            print(f'\t- {p.name()}: created at {created_time}')
 
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
