@@ -15,13 +15,13 @@ from .utils import Device, ImagePyramid
 
 
 def save_comparison(comparison: Tensor, directory: str,
-                    epoch: Optional[int] = None,
+                    epoch_number: Optional[int] = None,
                     is_final: bool = True) -> None:
 
     if not os.path.isdir(directory):
         os.makedirs(directory, exist_ok=True)
 
-    filename = 'final.png' if is_final else f'epoch_{epoch+1:03}.png'
+    filename = 'final.png' if is_final else f'epoch_{epoch_number:03}.png'
     filepath = os.path.join(directory, filename)
 
     save_image(comparison, filepath)
@@ -33,24 +33,32 @@ def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
 
     # Get the largest scale image from the pyramids
     left_image, right_image = torch.split(image_pyramid[0], [3, 3], 1)
-    left_disp, right_disp = torch.split(disparities[0], [1, 1], 1)
+    disparity, uncertainty = torch.split(disparities[0], [2, 2], 1)
+    left_disp, right_disp = torch.split(disparity, [1, 1], 1)
+    left_error, right_error = torch.split(uncertainty, [1, 1], 1)
     left_recon, right_recon = torch.split(recon_pyramid[0], [3, 3], 1)
 
     left_heat_disp = u.to_heatmap(left_disp[0], device)
     right_heat_disp = u.to_heatmap(right_disp[0], device)
 
+    left_heat_error = u.to_heatmap(left_error[0], device)
+    right_heat_error = u.to_heatmap(right_error[0], device)
+
     # Combine disparity in stereo and increase contrast
     disp = u.combine_disparity(left_disp[0], right_disp[0], device)
     scaled_disp = (disp - disp.min()) / (disp.max() - disp.min())
 
-    heat_disp = u.to_heatmap(disp, device)
+    error = u.combine_disparity(left_error[0], right_error[0], device)
+    scaled_error = (error - error.min()) / (error.max() - error.min())
+
     scaled_heat_disp = u.to_heatmap(scaled_disp, device)
+    scaled_heat_error = u.to_heatmap(scaled_error, device)
 
     grid = torch.stack((
         left_image[0], right_image[0],
+        left_recon[0], right_recon[0],
         left_heat_disp, right_heat_disp,
-        heat_disp, scaled_heat_disp,
-        left_recon[0], right_recon[0]))
+        scaled_heat_disp, scaled_heat_error))
 
     return make_grid(grid, nrow=2)
 
