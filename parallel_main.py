@@ -75,6 +75,8 @@ parser.add_argument('--master-port', default=3000, type=int,
                     help='The port for processes to communicate through.')
 parser.add_argument('--init-seed', default=0, type=int,
                     help='Set the manual seed for initialising models.')
+parser.add_argument('--debug-distributed', action='store_true', default=False,
+                    help='Set torch.distributed logging to "DETAILED".')
 
 
 def main(gpu_index: int, args: argparse.Namespace):
@@ -89,11 +91,19 @@ def main(gpu_index: int, args: argparse.Namespace):
         for key, value in vars(args).items():
             print(f'\t- {key}: {value}')
 
+<<<<<<< HEAD
         print('Live Processes:')
+=======
+        print('Live Python Processes:')
+>>>>>>> upstream/master
         for p in psutil.process_iter():
-            created = datetime.fromtimestamp(p.create_time())
-            created_time = created.strftime('%H:%M:%S')
-            print(f'\t- {p.name()}: created at {created_time}')
+            if 'python' not in p.name():
+                continue
+
+            created = datetime.fromtimestamp(p.create_time()) \
+                .strftime('%d-%m-%Y %H:%M:%S')
+
+            print(f'\t- {p.name()} ({p.pid}) created {created}.')
 
     val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
@@ -181,7 +191,7 @@ def main(gpu_index: int, args: argparse.Namespace):
         os.makedirs(model_directory, exist_ok=True)
     else:
         model_directory = None
-    
+
     if args.save_evaluation_to is not None and rank == 0:
         results_directory = os.path.join(args.save_evaluation_to, folder)
         os.makedirs(results_directory, exist_ok=True)
@@ -217,6 +227,7 @@ def main(gpu_index: int, args: argparse.Namespace):
 
             json.dump(losses_dict, f, indent=4)
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
     if args.number_of_nodes > 1:
@@ -226,5 +237,9 @@ if __name__ == '__main__':
 
     os.environ['MASTER_ADDR'] = args.master_address
     os.environ['MASTER_PORT'] = str(args.master_port)
+
+    if args.debug_distributed:
+        os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
+        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
     mp.spawn(main, nprocs=args.number_of_gpus, args=(args,))
