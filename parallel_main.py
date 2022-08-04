@@ -90,8 +90,11 @@ def main(gpu_index: int, args: argparse.Namespace):
         for key, value in vars(args).items():
             print(f'\t- {key}: {value}')
 
-        print('Live Processes')
+        print('Live Python Processes:')
         for p in psutil.process_iter():
+            if 'python' not in p.name():
+                continue
+
             created = datetime.fromtimestamp(p.create_time())
             created_time = created.strftime('%H:%M:%S')
             print(f'\t- {p.name()}: created at {created_time}')
@@ -227,5 +230,8 @@ if __name__ == '__main__':
 
     os.environ['MASTER_ADDR'] = args.master_address
     os.environ['MASTER_PORT'] = str(args.master_port)
+
+    os.environ["TORCH_CPP_LOG_LEVEL"] = "INFO"
+    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 
     mp.spawn(main, nprocs=args.number_of_gpus, args=(args,))
