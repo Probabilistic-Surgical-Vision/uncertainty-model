@@ -91,11 +91,7 @@ def main(gpu_index: int, args: argparse.Namespace):
         for key, value in vars(args).items():
             print(f'\t- {key}: {value}')
 
-<<<<<<< HEAD
-        print('Live Processes:')
-=======
         print('Live Python Processes:')
->>>>>>> upstream/master
         for p in psutil.process_iter():
             if 'python' not in p.name():
                 continue
