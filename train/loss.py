@@ -18,8 +18,8 @@ class WeightedSSIMLoss(nn.Module):
         super().__init__()
 
         self.alpha = alpha
-        self.k1 = k1
-        self.k2 = k2
+        self.k1 = k1 ** 2
+        self.k2 = k2 ** 2
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
 
@@ -43,10 +43,11 @@ class WeightedSSIMLoss(nn.Module):
         denominator = (luminance_xx + luminance_yy + self.k1) \
             * (contrast_x + contrast_y + self.k2)
 
-        return torch.clamp(numerator / denominator, 0, 1)
+        return numerator / denominator
 
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
-        return (1 - self.ssim(x, y)) / 2
+        dissimilarity = (1 - self.ssim(x, y)) / 2
+        return torch.clamp(dissimilarity, 0, 1)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
         left_l1_loss = u.l1_loss(images[:, 0:3], recon[:, 0:3])
@@ -55,11 +56,10 @@ class WeightedSSIMLoss(nn.Module):
         left_ssim_loss = self.dssim(images[:, 0:3], recon[:, 0:3])
         right_ssim_loss = self.dssim(images[:, 3:6], recon[:, 3:6])
 
-        total_l1_loss = torch.sum(left_l1_loss + right_l1_loss)
-        total_ssim_loss = torch.sum(left_ssim_loss + right_ssim_loss)
+        ssim_loss = torch.mean(left_ssim_loss + right_ssim_loss)
+        l1_loss = left_l1_loss + right_l1_loss
 
-        return (self.alpha * total_ssim_loss) \
-            + ((1 - self.alpha) * total_l1_loss)
+        return (self.alpha * ssim_loss) + ((1 - self.alpha) * l1_loss)
 
 
 class ConsistencyLoss(nn.Module):
@@ -112,7 +112,7 @@ class SmoothnessLoss(nn.Module):
         smooth_left_loss = self.smoothness_loss(disp[:, 0:1], images[:, 0:3])
         smooth_right_loss = self.smoothness_loss(disp[:, 1:2], images[:, 3:6])
 
-        return torch.sum(smooth_left_loss + smooth_right_loss)
+        return torch.mean(smooth_left_loss + smooth_right_loss)
 
 
 class PerceptualLoss(nn.Module):
@@ -197,8 +197,8 @@ class GeneratorLoss(nn.Module):
 
         for i, (images, disparity, recon_images) in enumerate(scales):
             reprojection_loss += self.wssim(images, recon_images)
-            consistency_loss += self.consistency(disparity) / (2 ** i)
-            smoothness_loss += self.smoothness(disparity, images)
+            consistency_loss += self.consistency(disparity)
+            smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
