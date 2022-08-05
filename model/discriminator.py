@@ -46,14 +46,12 @@ class RandomDiscriminator(nn.Module):
 
             features.append(out)
 
-        # Final layer isn't part of the pyramid
-        out = self.conv(out)
-        features.append(out)
-
         return features
 
     def forward(self, pyramid: ImagePyramid) -> Tensor:
-        out = self.features(pyramid)[-1]
+        feature = self.features(pyramid)[-1]
+        
+        out = self.conv(feature)
         out = out.view(out.size(0), -1)
 
         out = self.linear(out)

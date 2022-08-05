@@ -109,5 +109,7 @@ loss:
   wssim_alpha: 0.85
   perceptual_start: 5
   adversarial_loss_type: mse
-  error_loss_type: bayesian
-  error_smoothness: true
+  error_loss_config:
+    loss_type: l1
+    error_smoothness: true
+    smoothness_weight: 1.0

@@ -24,6 +24,7 @@ def save_comparison(comparison: Tensor, directory: str,
     filename = 'final.png' if is_final else f'epoch_{epoch_number:03}.png'
     filepath = os.path.join(directory, filename)
 
+    print(f'Saving comparison to:\n\t{filepath}')
     save_image(comparison, filepath)
 
 
@@ -89,8 +90,8 @@ def evaluate_model(model: Module, loader: DataLoader,
                        disable=(no_pbar or rank > 0))
 
     for i, image_pair in enumerate(tepoch):
-        left = image_pair["left"].to(device)
-        right = image_pair["right"].to(device)
+        left = image_pair['left'].to(device)
+        right = image_pair['right'].to(device)
 
         images = torch.cat([left, right], dim=1)
         image_pyramid = u.scale_pyramid(images, scales)
@@ -128,8 +129,12 @@ def evaluate_model(model: Module, loader: DataLoader,
                             epoch_number, is_final)
 
     if no_pbar and rank == 0:
-        print(f"{description}:"
-              f"\n\tmodel loss: {model_loss_per_image:.2e}"
-              f"\n\tdisparity scale: {scale:.2f}")
+        disc_loss_string = f'{disc_loss_per_image:.2e}' \
+            if disc_loss_per_image is not None else None
+
+        print(f'{description}:'
+              f'\n\tmodel loss: {model_loss_per_image:.2e}'
+              f'\n\tdiscriminator loss: {disc_loss_string}'
+              f'\n\tdisparity scale: {scale:.2f}')
 
     return model_loss_per_image, disc_loss_per_image

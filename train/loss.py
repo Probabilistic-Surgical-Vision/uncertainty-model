@@ -18,8 +18,8 @@ class WeightedSSIMLoss(nn.Module):
         super().__init__()
 
         self.alpha = alpha
-        self.k1 = k1
-        self.k2 = k2
+        self.k1 = k1 ** 2
+        self.k2 = k2 ** 2
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
 
@@ -43,10 +43,11 @@ class WeightedSSIMLoss(nn.Module):
         denominator = (luminance_xx + luminance_yy + self.k1) \
             * (contrast_x + contrast_y + self.k2)
 
-        return torch.clamp(numerator / denominator, 0, 1)
+        return numerator / denominator
 
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
-        return (1 - self.ssim(x, y)) / 2
+        dissimilarity = (1 - self.ssim(x, y)) / 2
+        return torch.clamp(dissimilarity, 0, 1)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
         left_l1_loss = u.l1_loss(images[:, 0:3], recon[:, 0:3])
@@ -55,11 +56,10 @@ class WeightedSSIMLoss(nn.Module):
         left_ssim_loss = self.dssim(images[:, 0:3], recon[:, 0:3])
         right_ssim_loss = self.dssim(images[:, 3:6], recon[:, 3:6])
 
-        total_l1_loss = torch.sum(left_l1_loss + right_l1_loss)
-        total_ssim_loss = torch.sum(left_ssim_loss + right_ssim_loss)
+        ssim_loss = torch.mean(left_ssim_loss + right_ssim_loss)
+        l1_loss = left_l1_loss + right_l1_loss
 
-        return (self.alpha * total_ssim_loss) \
-            + ((1 - self.alpha) * total_l1_loss)
+        return (self.alpha * ssim_loss) + ((1 - self.alpha) * l1_loss)
 
 
 class ConsistencyLoss(nn.Module):
@@ -112,7 +112,7 @@ class SmoothnessLoss(nn.Module):
         smooth_left_loss = self.loss(disp[:, 0:1], images[:, 0:3])
         smooth_right_loss = self.loss(disp[:, 1:2], images[:, 3:6])
 
-        return torch.sum(smooth_left_loss + smooth_right_loss)
+        return torch.mean(smooth_left_loss + smooth_right_loss)
 
 
 class PerceptualLoss(nn.Module):
@@ -134,38 +134,46 @@ class PerceptualLoss(nn.Module):
 
 
 class AdversarialLoss(nn.Module):
-    def __init__(self, loss: str = 'mse', perceptual_start: int = 5) -> None:
+    def __init__(self, loss: str = 'mse') -> None:
         super().__init__()
 
-        self.adversarial = nn.MSELoss() if loss == 'mse' else nn.BCELoss()
-        self.perceptual = PerceptualLoss()
+        self.adversarial = nn.MSELoss() \
+            if loss == 'mse' else nn.BCELoss()
 
-        self.perceptual_start = perceptual_start
-
-    def forward(self, image_pyramid: ImagePyramid, recon_pyramid: ImagePyramid,
-                discriminator: Module, epoch: int) -> Tensor:
+    def forward(self, recon_pyramid: ImagePyramid, discriminator: Module,
+                is_fake: bool = True) -> Tensor:
 
         predictions = discriminator(recon_pyramid)
-        labels = torch.ones_like(predictions)
+        labels = torch.zeros_like(predictions) \
+            if is_fake else torch.ones_like(predictions)
 
-        loss = self.adversarial(predictions, labels)
-
-        if epoch >= self.perceptual_start:
-            loss += self.perceptual(image_pyramid, recon_pyramid,
-                                    discriminator)
-
-        return loss
+        return self.adversarial(predictions, labels)
 
 
-class L1ReprojectionErrorLoss(nn.Module):
-    def __init__(self, include_smoothness: bool = True) -> None:
+class ReprojectionErrorLoss(nn.Module):
+    def __init__(self, loss_type: str = 'l1',
+                 include_smoothness: bool = True,
+                 smoothness_weight: float = 1.0) -> None:
+
         super().__init__()
 
+        if loss_type not in ('l1', 'bayesian'):
+            raise ValueError("Loss must be either 'l1' or 'bayesian'.")
+
+        self.loss_type = loss_type
+
         self.include_smoothness = include_smoothness
+        self.smoothness_weight = smoothness_weight
 
         self.smoothness = SmoothnessLoss() \
             if include_smoothness else None
     
+    def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
+        return torch.mean((truth / predicted) + torch.log(predicted))
+    
+    def l1(self, predicted: Tensor, truth: Tensor) -> Tensor:
+        return u.l1_loss(predicted, truth)
+
     def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
         left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
         
@@ -177,42 +185,13 @@ class L1ReprojectionErrorLoss(nn.Module):
         truth_resized = F.interpolate(truth_mean, size=(height, width),
                                       mode='bilinear', align_corners=True)
 
-        loss = u.l1_loss(predicted, truth_resized)
+        loss = self.l1(predicted, truth_resized) if self.loss_type == 'l1' \
+            else self.bayesian(predicted, truth_resized)
 
-        if self.include_smoothness:
-            smoothness_loss = self.smoothness.loss(predicted, truth_resized)
-            loss += torch.sum(smoothness_loss)
+        smoothness_loss = self.smoothness(predicted, truth_resized) \
+            if self.include_smoothness else 0
 
-        return loss
-
-
-class BayesianReprojectionErrorLoss(nn.Module):
-    def __init__(self, include_smoothness: bool = True) -> None:
-        super().__init__()
-
-        self.include_smoothness = include_smoothness
-
-        self.smoothness = SmoothnessLoss() \
-            if include_smoothness else None
-    
-    def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
-        
-        left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
-        truth_mean = torch.cat((left, right), dim=1)
-
-        _, _, height, width = predicted.size()
-
-        truth_resized = F.interpolate(truth_mean, size=(height, width),
-                                      mode='bilinear', align_corners=True)
-
-
-        loss = (truth_resized / predicted) + torch.log(predicted)
-
-        if self.include_smoothness:
-            loss += self.smoothness.loss(predicted, truth_resized)
-
-        return torch.sum(loss) / (width * height)
+        return loss + (smoothness_loss * self.smoothness_weight)
 
 
 class ModelLoss(nn.Module):
@@ -221,11 +200,11 @@ class ModelLoss(nn.Module):
                  smoothness_weight: float = 1.0,
                  adversarial_weight: float = 0.85,
                  predictive_error_weight: float = 1.0,
+                 perceptual_weight: float = 0.05,
                  wssim_alpha: float = 0.85,
                  perceptual_start: int = 5,
                  adversarial_loss_type: str = 'mse',
-                 error_loss_type = 'l1',
-                 error_smoothness: bool = True) -> None:
+                 error_loss_config: Optional[dict] = None) -> None:
 
         super().__init__()
 
@@ -234,29 +213,34 @@ class ModelLoss(nn.Module):
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
 
-        self.adversarial = AdversarialLoss(adversarial_loss_type,
-                                           perceptual_start)
+        self.adversarial = AdversarialLoss(adversarial_loss_type)
+        self.perceptual = PerceptualLoss()
 
-        self.predictive_error = L1ReprojectionErrorLoss() \
-            if error_loss_type == 'l1' \
-            else BayesianReprojectionErrorLoss(error_smoothness)
+        if error_loss_config is None:
+            error_loss_config = {}
+
+        self.predictive_error = ReprojectionErrorLoss(**error_loss_config)
+        
+        self.perceptual_start = perceptual_start
 
         self.wssim_weight = wssim_weight
         self.consistency_weight = consistency_weight
         self.smoothness_weight = smoothness_weight
         self.adversarial_weight = adversarial_weight
+        self.perceptual_weight = perceptual_weight
 
         self.predictive_error_weight = predictive_error_weight
 
     def forward(self, image_pyramid: ImagePyramid,
                 disparities: Tuple[Tensor, ...],
-                recon_pyramid: ImagePyramid, epoch: int,
+                recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
 
         reprojection_loss = 0
         consistency_loss = 0
-        loss = 0
+        smoothness_loss = 0
         adversarial_loss = 0
+        perceptual_loss = 0
 
         error_loss = 0
 
@@ -266,17 +250,24 @@ class ModelLoss(nn.Module):
             disparity, uncertainty = torch.split(disparity, [2, 2], dim=1)
 
             reprojection_loss += self.wssim(images, recon_images)
-            consistency_loss += self.consistency(disparity) / (2 ** i)
-            loss += self.smoothness(disparity, images)
+            consistency_loss += self.consistency(disparity)
+            smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
             error_loss += self.predictive_error(uncertainty, recon_images)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
-                                                 discriminator, epoch)
+                                                 discriminator)
+            
+            if epoch is not None and epoch >= self.perceptual_start:
+                perceptual_loss += self.perceptual(image_pyramid,
+                                                   recon_pyramid,
+                                                   discriminator)
+
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
-            + (loss * self.smoothness_weight) \
+            + (smoothness_loss * self.smoothness_weight) \
             + (adversarial_loss * self.adversarial_weight) \
+            + (perceptual_loss * self.perceptual_weight) \
             + (error_loss * self.predictive_error_weight)
