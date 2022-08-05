@@ -48,8 +48,8 @@ parser.add_argument('--validation-size', default=None, nargs='?', type=int,
                     help='The number of samples to evaluate with.')
 parser.add_argument('--save-model-to', default=None, type=str,
                     help='The path to save models to.')
-parser.add_argument('--save-evaluation-to', default=None, type=str,
-                    help='The path to save evaluation images to.')
+parser.add_argument('--save-results-to', default=None, type=str,
+                    help='The path to save results and images to.')
 parser.add_argument('--save-model-every', default=10, type=int,
                     help='The number of epochs between saving the model.')
 parser.add_argument('--evaluate-every', default=10, type=int,
@@ -189,8 +189,8 @@ def main(gpu_index: int, args: argparse.Namespace):
     else:
         model_directory = None
 
-    if args.save_evaluation_to is not None and rank == 0:
-        results_directory = os.path.join(args.save_evaluation_to, folder)
+    if args.save_results_to is not None and rank == 0:
+        results_directory = os.path.join(args.save_results_to, folder)
         os.makedirs(results_directory, exist_ok=True)
     else:
         results_directory = None
@@ -204,26 +204,34 @@ def main(gpu_index: int, args: argparse.Namespace):
                        device=device, no_pbar=args.no_pbar, rank=rank)
 
     training_losses, validation_losses = loss
-    model_losses, disc_losses = zip(*training_losses)
-    model_val_losses, disc_val_losses = zip(*validation_losses)
-
-    losses_filepath = os.path.join(results_directory, 'loss.json')
 
     if results_directory is not None and rank == 0:
-        with open(losses_filepath, 'w') as f:
-            losses_dict = {
-                'training': {
-                    'model': model_losses,
-                    'discriminator': disc_losses
-                },
-                'validation': {
-                    'model': model_val_losses,
-                    'discriminator': disc_val_losses
-                }
+        losses_filepath = os.path.join(results_directory, 'loss.json')
+
+        model_train_losses, disc_train_losses = zip(*training_losses)
+        disc_train_losses = None if args.loss != 'adversarial' \
+            else disc_train_losses
+
+        losses_dict = {
+            'training': {
+                'model': model_train_losses,
+                'discriminator': disc_train_losses
+            }
+        }
+
+        if len(validation_losses) > 0:
+            model_val_losses, disc_val_losses = zip(*validation_losses)
+            disc_val_losses = None if args.loss != 'adversarial' \
+                else disc_val_losses
+
+            losses_dict['validation'] = {
+                'model': model_val_losses,
+                'discriminator': disc_val_losses
             }
 
+        print(f'Saving losses to:\n\t{losses_filepath}')
+        with open(losses_filepath, 'w') as f:
             json.dump(losses_dict, f, indent=4)
-
 
 if __name__ == '__main__':
     args = parser.parse_args()

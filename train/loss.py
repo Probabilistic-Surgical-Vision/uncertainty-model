@@ -134,12 +134,15 @@ class PerceptualLoss(nn.Module):
 
 
 class AdversarialLoss(nn.Module):
-    def __init__(self, loss: str = 'mse', perceptual_start: int = 5) -> None:
+    def __init__(self, loss: str = 'mse', perceptual_weight: float = 0.05,
+                 perceptual_start: int = 5) -> None:
+
         super().__init__()
 
         self.adversarial = nn.MSELoss() if loss == 'mse' else nn.BCELoss()
         self.perceptual = PerceptualLoss()
 
+        self.perceptual_weight = perceptual_weight
         self.perceptual_start = perceptual_start
 
     def forward(self, image_pyramid: ImagePyramid, recon_pyramid: ImagePyramid,
@@ -148,13 +151,15 @@ class AdversarialLoss(nn.Module):
         predictions = discriminator(recon_pyramid)
         labels = torch.ones_like(predictions)
 
-        loss = self.adversarial(predictions, labels)
+        adversarial_loss = self.adversarial(predictions, labels)
 
         if epoch >= self.perceptual_start:
-            loss += self.perceptual(image_pyramid, recon_pyramid,
-                                    discriminator)
+            perceptual_loss = self.perceptual(image_pyramid, recon_pyramid,
+                                              discriminator)
+        else:
+            perceptual_loss = 0
 
-        return loss
+        return adversarial_loss + (perceptual_loss * self.perceptual_weight)
 
 
 class GeneratorLoss(nn.Module):
@@ -162,6 +167,7 @@ class GeneratorLoss(nn.Module):
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
                  adversarial_weight: float = 0.85,
+                 perceptual_weight: float = 0.05,
                  wssim_alpha: float = 0.85,
                  perceptual_start: int = 5,
                  adversarial_loss_type: str = 'mse') -> None:
@@ -176,6 +182,7 @@ class GeneratorLoss(nn.Module):
         self.smoothness = SmoothnessLoss()
 
         self.adversarial = AdversarialLoss(adversarial_loss_type,
+                                           perceptual_weight,
                                            perceptual_start)
 
         self.wssim_weight = wssim_weight

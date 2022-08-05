@@ -19,15 +19,16 @@ Loss = List[float]
 
 
 def save_model(model: Module, save_model_to: str,
-               epoch: Optional[int] = None,
+               epoch_number: Optional[int] = None,
                is_final: bool = False) -> None:
 
     if not os.path.isdir(save_model_to):
         os.makedirs(save_model_to, exist_ok=True)
 
-    filename = 'final.pt' if is_final else f'epoch_{epoch+1:03}.pt'
+    filename = 'final.pt' if is_final else f'epoch_{epoch_number:03}.pt'
     filepath = os.path.join(save_model_to, filename)
 
+    print(f'Saving model to:\n\t{filepath}')
     torch.save(model.state_dict(), filepath)
 
 
@@ -103,10 +104,13 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                                scale=scale)
 
     if no_pbar and rank == 0:
-        print(f"{description}:"
-              f"\n\tmodel loss: {model_loss_per_image:.2e}"
-              f"\n\tdisc loss: {disc_loss_per_image:.2e}"
-              f"\n\tdisparity scale: {scale:.2f}")
+        disc_loss_string = f'{disc_loss_per_image:.2e}' \
+            if disc_loss_per_image is not None else None
+
+        print(f'{description}:'
+              f'\n\tmodel loss: {model_loss_per_image:.2e}'
+              f'\n\tdiscriminator loss: {disc_loss_string}'
+              f'\n\tdisparity scale: {scale:.2f}')
 
     return model_loss_per_image, disc_loss_per_image
 
@@ -161,7 +165,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 validation_losses.append(loss)
 
         if save_every is not None and (i+1) % save_every == 0 and rank == 0:
-            save_model(model, save_model_to, epoch=i)
+            save_model(model, save_model_to, epoch_number=(i+1))
 
     print('Training completed.')
 
