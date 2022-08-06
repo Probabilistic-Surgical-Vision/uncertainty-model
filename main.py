@@ -32,9 +32,8 @@ parser.add_argument('--learning-rate', '-lr', default=1e-4, type=float,
                     help='The initial learning rate for training.')
 parser.add_argument('--batch-size', '-b', default=8, type=int,
                     help='The batch size to train/evaluate the model with.')
-parser.add_argument('--loss', '-l', choices=['monodepth', 'adversarial'],
-                    default='monodepth', help='The loss function to use '
-                    '(must be either "monodepth" or "adversarial").')
+parser.add_argument('--adversarial', action='store_true', default=False,
+                    help='Train the model with a discriminator.')
 parser.add_argument('--training-size', default=None, nargs='?', type=int,
                     help='The number of samples to train with.')
 parser.add_argument('--validation-size', default=None, nargs='?', type=int,
@@ -111,7 +110,7 @@ def main(args: argparse.Namespace):
     print(f'Model has {model_parameters:,} learnable parameters.'
           f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
-    if args.loss == 'adversarial':
+    if args.adversarial:
         disc = RandomDiscriminator(config['discriminator']).to(device)
         disc_loss_function = BCELoss().to(device)
 
@@ -152,8 +151,7 @@ def main(args: argparse.Namespace):
         losses_filepath = os.path.join(results_directory, 'results.json')
 
         model_train_losses, disc_train_losses = zip(*training_losses)
-        disc_train_losses = None if args.loss != 'adversarial' \
-            else disc_train_losses
+        disc_train_losses = None if args.adversarial else disc_train_losses
 
         results_dict = {
             'arguments': vars(args),
@@ -167,8 +165,7 @@ def main(args: argparse.Namespace):
 
         if len(validation_losses) > 0:
             model_val_losses, disc_val_losses = zip(*validation_losses)
-            disc_val_losses = None if args.loss != 'adversarial' \
-                else disc_val_losses
+            disc_val_losses = None if args.adversarial else disc_val_losses
 
             results_dict['losses'].update({
                 'validation': {
