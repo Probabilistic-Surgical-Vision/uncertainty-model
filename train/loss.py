@@ -134,32 +134,20 @@ class PerceptualLoss(nn.Module):
 
 
 class AdversarialLoss(nn.Module):
-    def __init__(self, loss: str = 'mse', perceptual_weight: float = 0.05,
-                 perceptual_start: int = 5) -> None:
-
+    def __init__(self, loss: str = 'mse') -> None:
         super().__init__()
 
-        self.adversarial = nn.MSELoss() if loss == 'mse' else nn.BCELoss()
-        self.perceptual = PerceptualLoss()
+        self.adversarial = nn.MSELoss() \
+            if loss == 'mse' else nn.BCELoss()
 
-        self.perceptual_weight = perceptual_weight
-        self.perceptual_start = perceptual_start
-
-    def forward(self, image_pyramid: ImagePyramid, recon_pyramid: ImagePyramid,
-                discriminator: Module, epoch: int) -> Tensor:
+    def forward(self, recon_pyramid: ImagePyramid, discriminator: Module,
+                is_fake: bool = True) -> Tensor:
 
         predictions = discriminator(recon_pyramid)
-        labels = torch.ones_like(predictions)
+        labels = torch.zeros_like(predictions) \
+            if is_fake else torch.ones_like(predictions)
 
-        adversarial_loss = self.adversarial(predictions, labels)
-
-        if epoch >= self.perceptual_start:
-            perceptual_loss = self.perceptual(image_pyramid, recon_pyramid,
-                                              discriminator)
-        else:
-            perceptual_loss = 0
-
-        return adversarial_loss + (perceptual_loss * self.perceptual_weight)
+        return self.adversarial(predictions, labels)
 
 
 class ModelLoss(nn.Module):
@@ -179,24 +167,27 @@ class ModelLoss(nn.Module):
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
 
-        self.adversarial = AdversarialLoss(adversarial_loss_type,
-                                           perceptual_weight,
-                                           perceptual_start)
+        self.adversarial = AdversarialLoss(adversarial_loss_type)
+        self.perceptual = PerceptualLoss()
+        
+        self.perceptual_start = perceptual_start
 
         self.wssim_weight = wssim_weight
         self.consistency_weight = consistency_weight
         self.smoothness_weight = smoothness_weight
         self.adversarial_weight = adversarial_weight
+        self.perceptual_weight = perceptual_weight
 
     def forward(self, image_pyramid: ImagePyramid,
                 disparities: Tuple[Tensor, ...],
-                recon_pyramid: ImagePyramid, epoch: int,
+                recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
 
         reprojection_loss = 0
         consistency_loss = 0
         smoothness_loss = 0
         adversarial_loss = 0
+        perceptual_loss = 0
 
         scales = zip(image_pyramid, disparities, recon_pyramid)
 
@@ -206,10 +197,16 @@ class ModelLoss(nn.Module):
             smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
         if discriminator is not None:
-            adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
-                                                 discriminator, epoch)
+            adversarial_loss += self.adversarial(recon_pyramid, discriminator)
+            
+            if epoch is not None and epoch >= self.perceptual_start:
+                perceptual_loss += self.perceptual(image_pyramid,
+                                                   recon_pyramid,
+                                                   discriminator)
+
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
             + (smoothness_loss * self.smoothness_weight) \
-            + (adversarial_loss * self.adversarial_weight)
+            + (adversarial_loss * self.adversarial_weight) \
+            + (perceptual_loss * self.perceptual_weight)
