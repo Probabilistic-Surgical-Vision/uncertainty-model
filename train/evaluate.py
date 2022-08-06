@@ -39,29 +39,39 @@ def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
     left_error, right_error = torch.split(uncertainty, [1, 1], 1)
     left_recon, right_recon = torch.split(recon_pyramid[0], [3, 3], 1)
 
-    left_heat_disp = u.to_heatmap(left_disp[0], device)
-    right_heat_disp = u.to_heatmap(right_disp[0], device)
+    # Take the first images in the batch
+    left_image, right_image = left_image[0], right_image[0]
+    left_disp, right_disp = left_disp[0], right_disp[0]
+    left_recon, right_recon = left_recon[0], right_recon[0]
 
-    left_heat_error = u.to_heatmap(left_error[0], device)
-    right_heat_error = u.to_heatmap(right_error[0], device)
+    # Find max/min for increasing contrast
+    max_disp, min_disp = disparity.max(), disparity.min()
+    max_error, min_error = uncertainty.max(), uncertainty.min()
 
-    # Combine disparity in stereo and increase contrast
-    disp = u.combine_disparity(left_disp[0], right_disp[0], device)
-    scaled_disp = (disp - disp.min()) / (disp.max() - disp.min())
+    left_disp_heatmap = u.to_heatmap(left_disp, device)
+    right_disp_heatmap = u.to_heatmap(right_disp, device)
 
-    error = u.combine_disparity(left_error[0], right_error[0], device)
-    scaled_error = (error - error.min()) / (error.max() - error.min())
+    scaled_left_disp = (left_disp - min_disp) / (max_disp - min_disp)
+    scaled_right_disp = (right_disp - min_disp) / (max_disp - min_disp)
+    scaled_left_disp_heatmap = u.to_heatmap(scaled_left_disp, device)
+    scaled_right_disp_heatmap = u.to_heatmap(scaled_right_disp, device)
 
-    scaled_heat_disp = u.to_heatmap(scaled_disp, device)
-    scaled_heat_error = u.to_heatmap(scaled_error, device)
+    left_error_heatmap = u.to_heatmap(left_error, device)
+    right_error_heatmap = u.to_heatmap(right_error, device)
+
+    scaled_left_error = (left_error - min_error) / (max_error - min_error)
+    scaled_right_error = (right_error - min_error) / (max_error - min_error)
+    scaled_left_error_heatmap = u.to_heatmap(scaled_left_error, device)
+    scaled_right_error_heatmap = u.to_heatmap(scaled_right_error, device)
 
     grid = torch.stack((
-        left_image[0], right_image[0],
-        left_recon[0], right_recon[0],
-        left_heat_disp, right_heat_disp,
-        scaled_heat_disp, scaled_heat_error))
+        left_image, right_image, left_recon, right_recon,
+        left_disp_heatmap, right_disp_heatmap,
+        scaled_left_disp_heatmap, scaled_right_disp_heatmap,
+        left_error_heatmap, right_error_heatmap,
+        scaled_left_error_heatmap, scaled_right_error_heatmap))
 
-    return make_grid(grid, nrow=2)
+    return make_grid(grid, nrow=4)
 
 
 @torch.no_grad()
