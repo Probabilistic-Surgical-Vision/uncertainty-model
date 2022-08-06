@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -11,27 +11,25 @@ ImagePyramid = List[Tensor]
 
 
 class RandomDiscriminator(nn.Module):
-    def __init__(self, config: dict) -> None:
+    def __init__(self, layers: List[dict], final_conv: dict,
+                 linear_in_features: int, load_graph: Optional[str] = None,
+                 nodes: int = 5, seed: int = 42) -> None:
 
         super().__init__()
 
-        nodes = config['nodes']
-        seed = config['seed']
-        load_graph = config['load_graph']
-
         self.layers = nn.ModuleList()
 
-        for i, layer_config in enumerate(config['layers']):
+        for i, layer_config in enumerate(layers):
             self.layers.append(EncoderStage(**layer_config, stage=(i+1),
                                             nodes=nodes, seed=seed,
                                             load_graph=load_graph))
 
-        self.conv = EncoderStage(**config['conv'],
+        self.conv = EncoderStage(**final_conv,
                                  stage=(len(self.layers)+1),
                                  nodes=nodes, seed=seed,
                                  load_graph=load_graph)
 
-        self.linear = nn.Linear(config['linear-in-features'], 1)
+        self.linear = nn.Linear(linear_in_features, 1)
 
     def features(self, pyramid: ImagePyramid) -> ImagePyramid:
         features = []

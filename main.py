@@ -16,7 +16,7 @@ from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import GeneratorLoss
+from train.loss import ModelLoss
 
 
 parser = argparse.ArgumentParser()
@@ -103,15 +103,15 @@ def main(args: argparse.Namespace):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
                             shuffle=False, num_workers=args.workers)
 
-    model = RandomlyConnectedModel(config['model']).to(device)
-    loss_function = GeneratorLoss().to(device)
+    model = RandomlyConnectedModel(**config['model']).to(device)
+    loss_function = ModelLoss(**config['loss']).to(device)
 
     model_parameters = sum(p.numel() for p in model.parameters())
     print(f'Model has {model_parameters:,} learnable parameters.'
           f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
     if args.adversarial:
-        disc = RandomDiscriminator(config['discriminator']).to(device)
+        disc = RandomDiscriminator(**config['discriminator']).to(device)
         disc_loss_function = BCELoss().to(device)
 
         disc_parameters = sum(p.numel() for p in disc.parameters())
@@ -151,10 +151,11 @@ def main(args: argparse.Namespace):
         losses_filepath = os.path.join(results_directory, 'results.json')
 
         model_train_losses, disc_train_losses = zip(*training_losses)
-        disc_train_losses = None if args.adversarial else disc_train_losses
+        disc_train_losses = disc_train_losses if args.adversarial else None
 
         results_dict = {
             'arguments': vars(args),
+            'config': config,
             'losses': {
                 'training': {
                     'model': model_train_losses,
@@ -165,7 +166,7 @@ def main(args: argparse.Namespace):
 
         if len(validation_losses) > 0:
             model_val_losses, disc_val_losses = zip(*validation_losses)
-            disc_val_losses = None if args.adversarial else disc_val_losses
+            disc_val_losses = disc_val_losses if args.adversarial else None
 
             results_dict['losses'].update({
                 'validation': {

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 import torch.nn as nn
 from torch import Tensor
@@ -7,17 +7,14 @@ from .layers.encoder import EncoderStage
 
 
 class RandomEncoder(nn.Module):
-    def __init__(self, config: dict) -> None:
+    def __init__(self, layers: List[dict], load_graph: Optional[str] = None,
+                 nodes: int = 5, seed: int = 42) -> None:
 
         super().__init__()
 
-        nodes = config['nodes']
-        seed = config['seed']
-        load_graph = config['load_graph']
-
         self.layers = nn.ModuleList()
 
-        for i, layer_config in enumerate(config['layers']):
+        for i, layer_config in enumerate(layers):
             self.layers.append(EncoderStage(**layer_config, stage=(i+1),
                                             nodes=nodes, seed=seed,
                                             load_graph=load_graph))

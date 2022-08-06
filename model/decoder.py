@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import torch.nn as nn
 from torch import Tensor
@@ -8,12 +8,12 @@ from .layers.decoder import DecoderStage
 
 class DepthDecoder(nn.Module):
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, layers: List[dict]) -> None:
         super().__init__()
 
         self.layers = nn.ModuleList()
 
-        for layer_config in config['layers']:
+        for layer_config in layers:
             self.layers.append(DecoderStage(**layer_config))
 
         for m in self.modules():

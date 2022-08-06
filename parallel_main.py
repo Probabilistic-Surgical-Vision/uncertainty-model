@@ -21,7 +21,7 @@ from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import GeneratorLoss
+from train.loss import ModelLoss
 
 
 parser = argparse.ArgumentParser()
@@ -152,11 +152,11 @@ def main(gpu_index: int, args: argparse.Namespace):
         if torch.cuda.is_available() and not args.no_cuda \
         else torch.device('cpu')
 
-    model = RandomlyConnectedModel(config['model']).to(device)
+    model = RandomlyConnectedModel(**config['model']).to(device)
     model = SyncBatchNorm.convert_sync_batchnorm(model)
     model = DistributedDataParallel(model, device_ids=[gpu_index])
 
-    loss_function = GeneratorLoss().to(device)
+    loss_function = ModelLoss(**config['loss']).to(device)
 
     if rank == 0:
         model_parameters = sum(p.numel() for p in model.parameters())
@@ -164,7 +164,7 @@ def main(gpu_index: int, args: argparse.Namespace):
               f'\n\tUsing CUDA? {next(model.parameters()).is_cuda}')
 
     if args.adversarial:
-        disc = RandomDiscriminator(config['discriminator']).to(device)
+        disc = RandomDiscriminator(**config['discriminator']).to(device)
         disc = SyncBatchNorm.convert_sync_batchnorm(disc)
         disc = DistributedDataParallel(disc, device_ids=[gpu_index])
 
@@ -208,10 +208,11 @@ def main(gpu_index: int, args: argparse.Namespace):
         losses_filepath = os.path.join(results_directory, 'results.json')
 
         model_train_losses, disc_train_losses = zip(*training_losses)
-        disc_train_losses = None if args.adversarial else disc_train_losses
+        disc_train_losses = disc_train_losses if args.adversarial else None
 
         results_dict = {
             'arguments': vars(args),
+            'config': config,
             'losses': {
                 'training': {
                     'model': model_train_losses,
@@ -222,7 +223,7 @@ def main(gpu_index: int, args: argparse.Namespace):
 
         if len(validation_losses) > 0:
             model_val_losses, disc_val_losses = zip(*validation_losses)
-            disc_val_losses = None if args.adversarial else disc_val_losses
+            disc_val_losses = disc_val_losses if args.adversarial else None
 
             results_dict['losses'].update({
                 'validation': {

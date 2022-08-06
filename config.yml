@@ -89,9 +89,18 @@ discriminator:
       out_channels: 256
       kernel_size: 3
       heads: 8
-  conv:
+  final_conv:
       in_channels: 256
       out_channels: 256
       kernel_size: 3
       heads: 8
-  linear-in-features: 32768
+  linear_in_features: 32768
+
+loss:
+  wssim_weight: 1.0
+  consistency_weight: 1.0
+  smoothness_weight: 1.0
+  adversarial_weight: 0.85
+  wssim_alpha: 0.85
+  perceptual_start: 5
+  adversarial_loss_type: mse

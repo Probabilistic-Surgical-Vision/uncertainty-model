@@ -162,7 +162,7 @@ class AdversarialLoss(nn.Module):
         return adversarial_loss + (perceptual_loss * self.perceptual_weight)
 
 
-class GeneratorLoss(nn.Module):
+class ModelLoss(nn.Module):
     def __init__(self, scales: int = 4, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
