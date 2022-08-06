@@ -111,5 +111,5 @@ loss:
   adversarial_loss_type: mse
   error_loss_config:
     loss_type: l1
-    error_smoothness: true
+    include_smoothness: true
     smoothness_weight: 1.0

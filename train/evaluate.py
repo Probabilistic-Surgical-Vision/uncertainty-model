@@ -42,6 +42,7 @@ def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
     # Take the first images in the batch
     left_image, right_image = left_image[0], right_image[0]
     left_disp, right_disp = left_disp[0], right_disp[0]
+    left_error, right_error = left_error[0], right_error[0]
     left_recon, right_recon = left_recon[0], right_recon[0]
 
     # Find max/min for increasing contrast

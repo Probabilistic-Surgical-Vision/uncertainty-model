@@ -188,7 +188,7 @@ class ReprojectionErrorLoss(nn.Module):
         loss = self.l1(predicted, truth_resized) if self.loss_type == 'l1' \
             else self.bayesian(predicted, truth_resized)
 
-        smoothness_loss = self.smoothness(predicted, truth_resized) \
+        smoothness_loss = self.smoothness(predicted, truth) \
             if self.include_smoothness else 0
 
         return loss + (smoothness_loss * self.smoothness_weight)
