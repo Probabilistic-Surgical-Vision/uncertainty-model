@@ -55,7 +55,7 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Prevent program from training model using cuda.')
 parser.add_argument('--no-augment', action='store_true', default=False,
                     help='Prevent program from augmenting training images.')
-parser.add_argument('--home', default=os.environ["HOME"], type=str,
+parser.add_argument('--home', default=os.environ['HOME'], type=str,
                     help='Override the home directory (to find datasets).')
 
 
@@ -149,16 +149,19 @@ def main(args: argparse.Namespace):
     training_losses, validation_losses = loss
 
     if results_directory is not None:
-        losses_filepath = os.path.join(results_directory, 'loss.json')
+        losses_filepath = os.path.join(results_directory, 'results.json')
 
         model_train_losses, disc_train_losses = zip(*training_losses)
         disc_train_losses = None if args.loss != 'adversarial' \
             else disc_train_losses
 
-        losses_dict = {
-            'training': {
-                'model': model_train_losses,
-                'discriminator': disc_train_losses
+        results_dict = {
+            'arguments': vars(args),
+            'losses': {
+                'training': {
+                    'model': model_train_losses,
+                    'discriminator': disc_train_losses
+                }
             }
         }
 
@@ -167,14 +170,16 @@ def main(args: argparse.Namespace):
             disc_val_losses = None if args.loss != 'adversarial' \
                 else disc_val_losses
 
-            losses_dict['validation'] = {
-                'model': model_val_losses,
-                'discriminator': disc_val_losses
-            }
+            results_dict['losses'].update({
+                'validation': {
+                    'model': model_val_losses,
+                    'discriminator': disc_val_losses
+                }
+            })
 
-        print(f'Saving losses to:\n\t{losses_filepath}')
+        print(f'Saving args and losses to:\n\t{losses_filepath}')
         with open(losses_filepath, 'w') as f:
-            json.dump(losses_dict, f, indent=4)
+            json.dump(results_dict, f, indent=4)
 
 
 if __name__ == '__main__':
