@@ -37,21 +37,29 @@ def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
     left_disp, right_disp = torch.split(disparities[0], [1, 1], 1)
     left_recon, right_recon = torch.split(recon_pyramid[0], [3, 3], 1)
 
-    left_heat_disp = u.to_heatmap(left_disp[0], device)
-    right_heat_disp = u.to_heatmap(right_disp[0], device)
+    # Take the first images in the batch
+    left_image, right_image = left_image[0], right_image[0]
+    left_disp, right_disp = left_disp[0], right_disp[0]
+    left_recon, right_recon = left_recon[0], right_recon[0]
 
-    # Combine disparity in stereo and increase contrast
-    disp = u.combine_disparity(left_disp[0], right_disp[0], device)
-    scaled_disp = (disp - disp.min()) / (disp.max() - disp.min())
+    # Combine disparity and find max/min for increasing contrast
+    cat_disp = torch.cat((left_disp, right_disp), dim=0)
+    max_disp, min_disp = cat_disp.max(), cat_disp.min()
 
-    heat_disp = u.to_heatmap(disp, device)
-    scaled_heat_disp = u.to_heatmap(scaled_disp, device)
+    scaled_left_disp = (left_disp - min_disp) / (max_disp - min_disp)
+    scaled_right_disp = (right_disp - min_disp) / (max_disp - min_disp)
+
+    left_disp_heatmap = u.to_heatmap(left_disp, device)
+    right_disp_heatmap = u.to_heatmap(right_disp, device)
+
+    scaled_left_disp_heatmap = u.to_heatmap(scaled_left_disp, device)
+    scaled_right_disp_heatmap = u.to_heatmap(scaled_right_disp, device)
 
     grid = torch.stack((
-        left_image[0], right_image[0],
-        left_heat_disp, right_heat_disp,
-        heat_disp, scaled_heat_disp,
-        left_recon[0], right_recon[0]))
+        left_image, right_image,
+        left_recon, right_recon,
+        left_disp_heatmap, right_disp_heatmap,
+        scaled_left_disp_heatmap, scaled_right_disp_heatmap))
 
     return make_grid(grid, nrow=2)
 
