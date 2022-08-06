@@ -163,7 +163,7 @@ class AdversarialLoss(nn.Module):
 
 
 class ModelLoss(nn.Module):
-    def __init__(self, scales: int = 4, wssim_weight: float = 1.0,
+    def __init__(self, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
                  adversarial_weight: float = 0.85,
@@ -173,8 +173,6 @@ class ModelLoss(nn.Module):
                  adversarial_loss_type: str = 'mse') -> None:
 
         super().__init__()
-
-        self.scales = scales
 
         self.wssim = WeightedSSIMLoss(wssim_alpha)
 
