@@ -105,6 +105,7 @@ loss:
   consistency_weight: 1.0
   smoothness_weight: 1.0
   adversarial_weight: 0.85
+  perceptual_weight: 0.05
   predictive_error_weight: 1.0
   wssim_alpha: 0.85
   perceptual_start: 5

@@ -256,8 +256,7 @@ class ModelLoss(nn.Module):
             error_loss += self.predictive_error(uncertainty, recon_images)
 
         if discriminator is not None:
-            adversarial_loss += self.adversarial(image_pyramid, recon_pyramid,
-                                                 discriminator)
+            adversarial_loss += self.adversarial(recon_pyramid, discriminator)
             
             if epoch is not None and epoch >= self.perceptual_start:
                 perceptual_loss += self.perceptual(image_pyramid,
