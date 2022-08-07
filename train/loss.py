@@ -169,7 +169,7 @@ class ModelLoss(nn.Module):
 
         self.adversarial = AdversarialLoss(adversarial_loss_type)
         self.perceptual = PerceptualLoss()
-        
+
         self.perceptual_start = perceptual_start
 
         self.wssim_weight = wssim_weight
@@ -198,12 +198,11 @@ class ModelLoss(nn.Module):
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(recon_pyramid, discriminator)
-            
+
             if epoch is not None and epoch >= self.perceptual_start:
                 perceptual_loss += self.perceptual(image_pyramid,
                                                    recon_pyramid,
                                                    discriminator)
-
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \

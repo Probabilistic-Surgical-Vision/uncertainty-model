@@ -130,7 +130,7 @@ def main(args: argparse.Namespace):
         os.makedirs(model_directory, exist_ok=True)
     else:
         model_directory = None
-    
+
     if args.save_results_to is not None:
         results_directory = os.path.join(args.save_results_to, folder)
         os.makedirs(results_directory, exist_ok=True)

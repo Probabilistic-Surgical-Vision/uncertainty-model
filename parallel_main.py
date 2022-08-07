@@ -236,6 +236,7 @@ def main(gpu_index: int, args: argparse.Namespace):
         with open(losses_filepath, 'w') as f:
             json.dump(results_dict, f, indent=4)
 
+
 if __name__ == '__main__':
     args = parser.parse_args()
     if args.number_of_nodes > 1:
