@@ -48,7 +48,7 @@ class RandomDiscriminator(nn.Module):
 
     def forward(self, pyramid: ImagePyramid) -> Tensor:
         feature = self.features(pyramid)[-1]
-        
+
         out = self.conv(feature)
         out = out.view(out.size(0), -1)
 

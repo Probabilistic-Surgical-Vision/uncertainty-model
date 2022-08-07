@@ -167,16 +167,16 @@ class ReprojectionErrorLoss(nn.Module):
 
         self.smoothness = SmoothnessLoss() \
             if include_smoothness else None
-    
+
     def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return torch.mean((truth / predicted) + torch.log(predicted))
-    
+
     def l1(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return u.l1_loss(predicted, truth)
 
     def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
         left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
-        
+
         left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
         truth_mean = torch.cat((left, right), dim=1)
 
@@ -220,7 +220,7 @@ class ModelLoss(nn.Module):
             error_loss_config = {}
 
         self.predictive_error = ReprojectionErrorLoss(**error_loss_config)
-        
+
         self.perceptual_start = perceptual_start
 
         self.wssim_weight = wssim_weight
@@ -257,12 +257,11 @@ class ModelLoss(nn.Module):
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(recon_pyramid, discriminator)
-            
+
             if epoch is not None and epoch >= self.perceptual_start:
                 perceptual_loss += self.perceptual(image_pyramid,
                                                    recon_pyramid,
                                                    discriminator)
-
 
         return reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
