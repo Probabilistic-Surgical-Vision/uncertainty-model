@@ -95,7 +95,7 @@ class ConsistencyLoss(nn.Module):
         left_con_loss = u.l1_loss(disp[:, 0:1], left_lr_disp)
         right_con_loss = u.l1_loss(disp[:, 1:2], right_lr_disp)
 
-        return left_con_loss + right_con_loss
+        return torch.sum(left_con_loss + right_con_loss)
 
 
 class SmoothnessLoss(nn.Module):

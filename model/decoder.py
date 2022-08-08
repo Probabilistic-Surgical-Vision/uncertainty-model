@@ -1,10 +1,11 @@
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import torch.nn as nn
 from torch import Tensor
 
 from .layers.decoder import DecoderStage
 
+DecoderOut = Union[Tuple[Tensor, ...], Tensor]
 
 class DepthDecoder(nn.Module):
 
@@ -21,7 +22,7 @@ class DepthDecoder(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
 
     def forward(self, left_image: Tensor, *feature_maps: Tensor,
-                scale: float = 2.0) -> Tuple[Tensor, ...]:
+                scale: float = 1.0) -> DecoderOut:
 
         f1, f2, f3, f4, x4 = feature_maps
 
@@ -33,4 +34,7 @@ class DepthDecoder(nn.Module):
 
         _, _, disp1 = self.layers[4](out2, left_image, skip2, disp2, scale)
 
-        return disp1, disp2, disp3, disp4
+        if self.training:
+            return disp1, disp2, disp3, disp4
+
+        return disp1
