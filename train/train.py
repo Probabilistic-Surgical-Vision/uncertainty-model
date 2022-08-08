@@ -167,7 +167,8 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         if save_every is not None and (i+1) % save_every == 0 and rank == 0:
             save_model(model, save_model_to, epoch_number=(i+1))
 
-    print('Training completed.')
+    if rank == 0:
+        print('Training completed.')
 
     if save_model_to is not None and rank == 0:
         save_model(model, save_model_to, is_final=True)

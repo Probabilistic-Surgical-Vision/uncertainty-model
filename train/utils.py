@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List, Optional, Union
 
 import matplotlib.pyplot as plt
 
@@ -8,6 +8,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
+
+from torchvision.utils import make_grid
 
 ImagePyramid = List[Tensor]
 Device = Union[torch.device, str]
@@ -161,3 +163,40 @@ def run_discriminator(image_pyramid: ImagePyramid,
     labels[:batch_size] = 1
 
     return disc_loss_function(predictions, labels) / 2
+
+
+def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
+                   add_scaled: bool = False, device: Device = 'cpu') -> Tensor:
+    
+    left_image, right_image = torch.split(image, [3, 3], dim=0)
+    left_pred, right_pred = torch.split(prediction, [1, 1], dim=0)
+
+    min_pred, max_pred = prediction.min(), prediction.max()
+    scaled_left_pred = (left_pred - min_pred) / (max_pred - min_pred)
+    scaled_right_pred = (right_pred - min_pred) / (max_pred - min_pred)
+
+    left_pred = to_heatmap(left_pred, device)
+    right_pred = to_heatmap(right_pred, device)
+
+    if extra is not None:
+        extra_split = [3, 3] if extra.size(0) == 6 else [1, 1]
+        left_extra, right_extra = torch.split(extra, extra_split, dim=0)
+
+        if extra.size(0) == 2:
+            left_extra = to_heatmap(left_extra, device)
+            right_extra = to_heatmap(right_extra, device)
+
+    images = torch.stack((left_image, right_image, left_pred, right_pred))
+
+    if add_scaled:
+        scaled_left_pred = to_heatmap(scaled_left_pred, device)
+        scaled_right_pred = to_heatmap(scaled_right_pred, device)
+
+        images = torch.cat((images, scaled_left_pred.unsqueeze(0),
+                           scaled_right_pred.unsqueeze(0)))
+    
+    if extra is not None:
+        images = torch.cat((images, left_extra.unsqueeze(0),
+                           right_extra.unsqueeze(0)))
+
+    return make_grid(images, nrow=2)
