@@ -175,8 +175,8 @@ class AdversarialLoss(nn.Module):
 
 class ReprojectionErrorLoss(nn.Module):
     def __init__(self, loss_type: str = 'l1',
-                 include_smoothness: bool = True,
-                 smoothness_weight: float = 1.0) -> None:
+                 smoothness_weight: float = 1.0,
+                 consistency_weight: float = 1.0) -> None:
 
         super().__init__()
 
@@ -185,11 +185,14 @@ class ReprojectionErrorLoss(nn.Module):
 
         self.loss_type = loss_type
 
-        self.include_smoothness = include_smoothness
         self.smoothness_weight = smoothness_weight
+        self.consistency_weight = consistency_weight
 
         self.smoothness = SmoothnessLoss() \
-            if include_smoothness else None
+            if smoothness_weight > 0 else None
+        
+        self.consistency = ConsistencyLoss() \
+            if consistency_weight > 0 else None
 
     def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return torch.mean((truth / predicted) + torch.log(predicted))
@@ -201,7 +204,10 @@ class ReprojectionErrorLoss(nn.Module):
         left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
 
         left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
-        truth_mean = torch.cat((left, right), dim=1)
+        
+        # We flip left and right since the right reprojection error 
+        # is given by the left disparity and vice-versa
+        truth_mean = torch.cat((right, left), dim=1)
 
         _, _, height, width = predicted.size()
 
@@ -212,9 +218,12 @@ class ReprojectionErrorLoss(nn.Module):
             else self.bayesian(predicted, truth_resized)
 
         smoothness_loss = self.smoothness(predicted, truth) \
-            if self.include_smoothness else 0
+            if self.smoothness_weight > 0 else 0
+        consistency_loss = self.consistency(predicted) \
+            if self.consistency_weight > 0 else 0
 
-        return loss + (smoothness_loss * self.smoothness_weight)
+        return loss + (smoothness_loss * self.smoothness_weight) \
+            + (consistency_loss * self.consistency_weight)
 
 
 class ModelLoss(nn.Module):
