@@ -6,73 +6,44 @@ from torch import Tensor
 from torch.nn import Module
 from torch.utils.data import DataLoader
 
-from torchvision.utils import make_grid, save_image
+from torchvision.utils import save_image
 
 import tqdm
 
 from . import utils as u
-from .utils import Device, ImagePyramid
+from .utils import Device
 
 
-def save_comparison(comparison: Tensor, directory: str,
-                    epoch_number: Optional[int] = None,
-                    is_final: bool = True) -> None:
+def save_comparisons(image: Tensor, prediction: Tensor,
+                     recon: Tensor, error: Tensor, directory: str,
+                     epoch_number: Optional[int] = None,
+                     is_final: bool = True, device: Device = 'cpu') -> None:
+    
+    disparity, uncertainty = torch.split(prediction, [2, 2], dim=0)
+    left_error, right_error = torch.split(error, [3, 3], dim=0)
+    error = torch.cat((left_error.mean(0, True), right_error.mean(0, True)))
 
-    if not os.path.isdir(directory):
-        os.makedirs(directory, exist_ok=True)
+    prediction_image = u.get_comparison(image, disparity, uncertainty,
+                                      add_scaled=False, device=device)
+    disparity_image = u.get_comparison(image, disparity, recon,
+                                     add_scaled=True, device=device)
+    uncertainty_image = u.get_comparison(image, uncertainty, error,
+                                       add_scaled=True, device=device)
 
-    filename = 'final.png' if is_final else f'epoch_{epoch_number:03}.png'
-    filepath = os.path.join(directory, filename)
+    dirname = 'final' if is_final else f'epoch_{epoch_number:03}'
+    epoch_directory = os.path.join(directory, dirname)
+    
+    if not os.path.isdir(epoch_directory):
+        os.makedirs(epoch_directory, exist_ok=True)
 
-    print(f'Saving comparison to:\n\t{filepath}')
-    save_image(comparison, filepath)
-
-
-def create_comparison(image_pyramid: ImagePyramid, disparities: ImagePyramid,
-                      recon_pyramid: ImagePyramid,
-                      device: Device = 'cpu') -> Tensor:
-
-    # Get the largest scale image from the pyramids
-    left_image, right_image = torch.split(image_pyramid[0], [3, 3], 1)
-    disparity, uncertainty = torch.split(disparities[0], [2, 2], 1)
-    left_disp, right_disp = torch.split(disparity, [1, 1], 1)
-    left_error, right_error = torch.split(uncertainty, [1, 1], 1)
-    left_recon, right_recon = torch.split(recon_pyramid[0], [3, 3], 1)
-
-    # Take the first images in the batch
-    left_image, right_image = left_image[0], right_image[0]
-    left_disp, right_disp = left_disp[0], right_disp[0]
-    left_error, right_error = left_error[0], right_error[0]
-    left_recon, right_recon = left_recon[0], right_recon[0]
-
-    # Find max/min for increasing contrast
-    max_disp, min_disp = disparity.max(), disparity.min()
-    max_error, min_error = uncertainty.max(), uncertainty.min()
-
-    left_disp_heatmap = u.to_heatmap(left_disp, device)
-    right_disp_heatmap = u.to_heatmap(right_disp, device)
-
-    scaled_left_disp = (left_disp - min_disp) / (max_disp - min_disp)
-    scaled_right_disp = (right_disp - min_disp) / (max_disp - min_disp)
-    scaled_left_disp_heatmap = u.to_heatmap(scaled_left_disp, device)
-    scaled_right_disp_heatmap = u.to_heatmap(scaled_right_disp, device)
-
-    left_error_heatmap = u.to_heatmap(left_error, device)
-    right_error_heatmap = u.to_heatmap(right_error, device)
-
-    scaled_left_error = (left_error - min_error) / (max_error - min_error)
-    scaled_right_error = (right_error - min_error) / (max_error - min_error)
-    scaled_left_error_heatmap = u.to_heatmap(scaled_left_error, device)
-    scaled_right_error_heatmap = u.to_heatmap(scaled_right_error, device)
-
-    grid = torch.stack((
-        left_image, right_image, left_recon, right_recon,
-        left_disp_heatmap, right_disp_heatmap,
-        scaled_left_disp_heatmap, scaled_right_disp_heatmap,
-        left_error_heatmap, right_error_heatmap,
-        scaled_left_error_heatmap, scaled_right_error_heatmap))
-
-    return make_grid(grid, nrow=4)
+    print(f'Saving comparisons to:\n\t{epoch_directory}')
+    prediction_filename = os.path.join(epoch_directory, 'prediction.png')
+    disparity_filename = os.path.join(epoch_directory, 'disparity.png')
+    uncertainty_filename = os.path.join(epoch_directory, 'uncertainty.png')
+    
+    save_image(prediction_image, prediction_filename)
+    save_image(disparity_image, disparity_filename)
+    save_image(uncertainty_image, uncertainty_filename)
 
 
 @torch.no_grad()
@@ -133,11 +104,11 @@ def evaluate_model(model: Module, loader: DataLoader,
                            scale=scale)
 
         if save_evaluation_to is not None and i == 0:
-            comparison = create_comparison(image_pyramid, disparities,
-                                           recon_pyramid, device)
-
-            save_comparison(comparison, save_evaluation_to,
-                            epoch_number, is_final)
+            error_pyramid = loss_function.reprojection_errors
+            save_comparisons(image_pyramid[0][0], disparities[0][0],
+                             recon_pyramid[0][0], error_pyramid[0][0],
+                             save_evaluation_to, epoch_number,
+                             is_final, device)
 
     if no_pbar and rank == 0:
         disc_loss_string = f'{disc_loss_per_image:.2e}' \

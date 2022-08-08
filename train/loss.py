@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -11,7 +11,7 @@ from .utils import ImagePyramid
 from . import utils as u
 
 
-class WeightedSSIMLoss(nn.Module):
+class WeightedSSIMError(nn.Module):
     def __init__(self, alpha: float = 0.85, k1: float = 0.01,
                  k2: float = 0.03) -> None:
 
@@ -22,6 +22,12 @@ class WeightedSSIMLoss(nn.Module):
         self.k2 = k2 ** 2
 
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1)
+
+        self.__previous_image_error = None
+
+    @property
+    def previous_image_error(self) -> Tensor:
+        return self.__previous_image_error
 
     def ssim(self, x: Tensor, y: Tensor) -> Tensor:
 
@@ -49,17 +55,34 @@ class WeightedSSIMLoss(nn.Module):
         dissimilarity = (1 - self.ssim(x, y)) / 2
         return torch.clamp(dissimilarity, 0, 1)
 
+    def l1_error(self, x: Tensor, y: Tensor) -> Tensor:
+        return (x - y).abs()
+    
+    def image_error(self, images: Tensor, recon: Tensor) -> Tensor:
+        _, _, height, width = images.size()
+
+        left_l1_error = self.l1_error(images[:, 0:3], recon[:, 0:3])
+        right_l1_error = self.l1_error(images[:, 3:6], recon[:, 3:6])
+
+        left_ssim_error = self.dssim(images[:, 0:3], recon[:, 0:3])
+        right_ssim_error = self.dssim(images[:, 3:6], recon[:, 3:6])
+
+        l1_error = torch.cat((left_l1_error, right_l1_error), dim=1)
+        ssim_error = torch.cat((left_ssim_error, right_ssim_error), dim=1)
+
+        ssim_error = F.interpolate(ssim_error, size=(height, width),
+                                   mode='bilinear', align_corners=True)
+
+        return (self.alpha * ssim_error) + ((1 - self.alpha) * l1_error)
+
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
-        left_l1_loss = u.l1_loss(images[:, 0:3], recon[:, 0:3])
-        right_l1_loss = u.l1_loss(images[:, 3:6], recon[:, 3:6])
+        error = self.image_error(images, recon)
+        left_error, right_error = torch.split(error, [3, 3], dim=1)
 
-        left_ssim_loss = self.dssim(images[:, 0:3], recon[:, 0:3])
-        right_ssim_loss = self.dssim(images[:, 3:6], recon[:, 3:6])
+        self.__previous_image_error = error
 
-        ssim_loss = torch.mean(left_ssim_loss + right_ssim_loss)
-        l1_loss = left_l1_loss + right_l1_loss
-
-        return (self.alpha * ssim_loss) + ((1 - self.alpha) * l1_loss)
+        return torch.mean(left_error + right_error)
+        
 
 
 class ConsistencyLoss(nn.Module):
@@ -208,7 +231,7 @@ class ModelLoss(nn.Module):
 
         super().__init__()
 
-        self.wssim = WeightedSSIMLoss(wssim_alpha)
+        self.wssim = WeightedSSIMError(wssim_alpha)
 
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
@@ -231,10 +254,18 @@ class ModelLoss(nn.Module):
 
         self.predictive_error_weight = predictive_error_weight
 
+        self.__reprojection_errors = []
+
+    @property
+    def reprojection_errors(self) -> List[Tensor]:
+        return self.__reprojection_errors
+
     def forward(self, image_pyramid: ImagePyramid,
                 disparities: Tuple[Tensor, ...],
                 recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
+
+        self.__reprojection_errors = []
 
         reprojection_loss = 0
         consistency_loss = 0
@@ -248,12 +279,15 @@ class ModelLoss(nn.Module):
 
         for i, (images, disparity, recon_images) in enumerate(scales):
             disparity, uncertainty = torch.split(disparity, [2, 2], dim=1)
-
+            
             reprojection_loss += self.wssim(images, recon_images)
             consistency_loss += self.consistency(disparity)
             smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
-            error_loss += self.predictive_error(uncertainty, recon_images)
+            reprojection_err = self.wssim.previous_image_error
+            self.reprojection_errors.append(reprojection_err)
+
+            error_loss += self.predictive_error(uncertainty, reprojection_err)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(recon_pyramid, discriminator)
