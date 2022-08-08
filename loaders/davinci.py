@@ -1,9 +1,10 @@
 import glob
 import os.path
 
-from typing import Optional
+from typing import Dict, Optional
 from PIL import Image, ImageFile
 
+from torch import Tensor
 from torch.utils.data import Dataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -17,7 +18,7 @@ class DaVinciDataset(Dataset):
 
     def __init__(self, root: str, split: str,
                  transform: Optional[object] = None,
-                 limit: Optional[int] = None):
+                 limit: Optional[int] = None) -> None:
 
         if split not in ('train', 'test'):
             raise ValueError('Split must be either "train" or "test".')
@@ -47,19 +48,19 @@ class DaVinciDataset(Dataset):
 
         self.transform = transform
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Dict[str, Tensor]:
         left_path = self.lefts[idx]
         right_path = self.rights[idx]
 
         left = Image.open(left_path).convert('RGB')
         right = Image.open(right_path).convert('RGB')
 
-        image_pair = {"left": left, "right": right}
+        image_pair = {'left': left, 'right': right}
 
         if self.transform is not None:
             image_pair = self.transform(image_pair)
 
         return image_pair
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.lefts)

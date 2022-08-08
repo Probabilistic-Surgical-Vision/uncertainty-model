@@ -9,3 +9,4 @@ matplotlib
 jupyter
 ipython
 nbconvert
+psutil
