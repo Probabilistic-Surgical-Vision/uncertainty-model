@@ -82,7 +82,6 @@ class WeightedSSIMError(nn.Module):
         self.__previous_image_error = error
 
         return torch.mean(left_error + right_error)
-        
 
 
 class ConsistencyLoss(nn.Module):
