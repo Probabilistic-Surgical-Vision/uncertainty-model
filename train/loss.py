@@ -57,7 +57,7 @@ class WeightedSSIMError(nn.Module):
 
     def l1_error(self, x: Tensor, y: Tensor) -> Tensor:
         return (x - y).abs()
-    
+
     def image_error(self, images: Tensor, recon: Tensor) -> Tensor:
         _, _, height, width = images.size()
 
@@ -189,7 +189,7 @@ class ReprojectionErrorLoss(nn.Module):
 
         self.smoothness = SmoothnessLoss() \
             if smoothness_weight > 0 else None
-        
+
         self.consistency = ConsistencyLoss() \
             if consistency_weight > 0 else None
 
@@ -203,8 +203,8 @@ class ReprojectionErrorLoss(nn.Module):
         left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
 
         left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
-        
-        # We flip left and right since the right reprojection error 
+
+        # We flip left and right since the right reprojection error
         # is given by the left disparity and vice-versa
         truth_mean = torch.cat((right, left), dim=1)
 
@@ -287,7 +287,7 @@ class ModelLoss(nn.Module):
 
         for i, (images, disparity, recon_images) in enumerate(scales):
             disparity, uncertainty = torch.split(disparity, [2, 2], dim=1)
-            
+
             reprojection_loss += self.wssim(images, recon_images)
             consistency_loss += self.consistency(disparity)
             smoothness_loss += self.smoothness(disparity, images) / (2 ** i)

@@ -7,6 +7,7 @@ from .layers.decoder import DecoderStage
 
 DecoderOut = Union[Tuple[Tensor, ...], Tensor]
 
+
 class DepthDecoder(nn.Module):
 
     def __init__(self, layers: List[dict]) -> None:

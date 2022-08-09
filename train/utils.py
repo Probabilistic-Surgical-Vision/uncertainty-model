@@ -167,7 +167,7 @@ def run_discriminator(image_pyramid: ImagePyramid,
 
 def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
                    add_scaled: bool = False, device: Device = 'cpu') -> Tensor:
-    
+
     left_image, right_image = torch.split(image, [3, 3], dim=0)
     left_pred, right_pred = torch.split(prediction, [1, 1], dim=0)
 
@@ -194,7 +194,7 @@ def get_comparison(image: Tensor, prediction: Tensor, extra: Optional[Tensor],
 
         images = torch.cat((images, scaled_left_pred.unsqueeze(0),
                            scaled_right_pred.unsqueeze(0)))
-    
+
     if extra is not None:
         images = torch.cat((images, left_extra.unsqueeze(0),
                            right_extra.unsqueeze(0)))

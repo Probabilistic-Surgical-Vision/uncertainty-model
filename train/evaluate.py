@@ -18,21 +18,21 @@ def save_comparisons(image: Tensor, prediction: Tensor,
                      recon: Tensor, error: Tensor, directory: str,
                      epoch_number: Optional[int] = None,
                      is_final: bool = True, device: Device = 'cpu') -> None:
-    
+
     disparity, uncertainty = torch.split(prediction, [2, 2], dim=0)
     left_error, right_error = torch.split(error, [3, 3], dim=0)
     error = torch.cat((left_error.mean(0, True), right_error.mean(0, True)))
 
     prediction_image = u.get_comparison(image, disparity, uncertainty,
-                                      add_scaled=False, device=device)
+                                        add_scaled=False, device=device)
     disparity_image = u.get_comparison(image, disparity, recon,
-                                     add_scaled=True, device=device)
-    uncertainty_image = u.get_comparison(image, uncertainty, error,
                                        add_scaled=True, device=device)
+    uncertainty_image = u.get_comparison(image, uncertainty, error,
+                                         add_scaled=True, device=device)
 
     dirname = 'final' if is_final else f'epoch_{epoch_number:03}'
     epoch_directory = os.path.join(directory, dirname)
-    
+
     if not os.path.isdir(epoch_directory):
         os.makedirs(epoch_directory, exist_ok=True)
 
@@ -40,7 +40,7 @@ def save_comparisons(image: Tensor, prediction: Tensor,
     prediction_filename = os.path.join(epoch_directory, 'prediction.png')
     disparity_filename = os.path.join(epoch_directory, 'disparity.png')
     uncertainty_filename = os.path.join(epoch_directory, 'uncertainty.png')
-    
+
     save_image(prediction_image, prediction_filename)
     save_image(disparity_image, disparity_filename)
     save_image(uncertainty_image, uncertainty_filename)
