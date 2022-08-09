@@ -17,7 +17,7 @@ from .utils import Device
 def save_comparison(image: Tensor, disparity: Tensor, recon: Tensor,
                     directory: str, epoch_number: Optional[int] = None,
                     is_final: bool = True, device: Device = 'cpu') -> None:
-    
+
     disparity_image = u.get_comparison(image, disparity, recon,
                                        add_scaled=True, device=device)
 
