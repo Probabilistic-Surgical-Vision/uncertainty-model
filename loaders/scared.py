@@ -12,7 +12,6 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class SCAREDDataset(Dataset):
 
-    KEYFRAMES_GLOB = 'keyframe_*'
     LEFT_PATH = 'left'
     RIGHT_PATH = 'right'
     EXTENSION = 'png'
