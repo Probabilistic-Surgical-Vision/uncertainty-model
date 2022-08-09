@@ -207,7 +207,9 @@ def main(gpu_index: int, args: argparse.Namespace):
     if results_directory is not None and rank == 0:
         losses_filepath = os.path.join(results_directory, 'results.json')
 
-        model_train_losses, disc_train_losses = zip(*training_losses)
+        (disp_train_losses, error_train_losses,
+        disc_train_losses) = zip(*training_losses)
+
         disc_train_losses = disc_train_losses if args.adversarial else None
 
         results_dict = {
@@ -215,19 +217,23 @@ def main(gpu_index: int, args: argparse.Namespace):
             'config': config,
             'losses': {
                 'training': {
-                    'model': model_train_losses,
+                    'disparity': disp_train_losses,
+                    'uncertainty': error_train_losses,
                     'discriminator': disc_train_losses
                 }
             }
         }
 
         if len(validation_losses) > 0:
-            model_val_losses, disc_val_losses = zip(*validation_losses)
+            (disp_val_losses, error_val_losses,
+            disc_val_losses) = zip(*validation_losses)
+
             disc_val_losses = disc_val_losses if args.adversarial else None
 
             results_dict['losses'].update({
                 'validation': {
-                    'model': model_val_losses,
+                    'disparity': disp_val_losses,
+                    'uncertainty': error_val_losses,
                     'discriminator': disc_val_losses
                 }
             })

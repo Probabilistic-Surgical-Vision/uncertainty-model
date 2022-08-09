@@ -57,10 +57,12 @@ def evaluate_model(model: Module, loader: DataLoader,
                    scales: int = 4, device: Device = 'cpu',
                    no_pbar: bool = False, rank: int = 0) -> float:
 
-    running_model_loss = 0
+    running_disp_loss = 0
+    running_error_loss = 0
     running_disc_loss = 0
 
-    model_loss_per_image = None
+    disp_loss_per_image = None
+    error_loss_per_image = None
     disc_loss_per_image = None
 
     batch_size = loader.batch_size \
@@ -81,8 +83,8 @@ def evaluate_model(model: Module, loader: DataLoader,
         disparities = model(left, scale)
 
         recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
-        model_loss = loss_function(image_pyramid, disparities,
-                                   recon_pyramid, i, disc)
+        disp_loss, error_loss = loss_function(image_pyramid, disparities,
+                                              recon_pyramid, i, disc)
 
         if disc is not None:
             disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
@@ -92,14 +94,18 @@ def evaluate_model(model: Module, loader: DataLoader,
         if rank > 0:
             continue
 
-        running_model_loss += model_loss.item()
-        model_loss_per_image = running_model_loss / ((i+1) * batch_size)
+        running_disp_loss += disp_loss.item()
+        running_error_loss += error_loss.item()
+
+        disp_loss_per_image = running_disp_loss / ((i+1) * batch_size)
+        error_loss_per_image = running_error_loss / ((i+1) * batch_size)
 
         if disc is not None:
             running_disc_loss += disc_loss.item()
             disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
 
-        tepoch.set_postfix(loss=model_loss_per_image,
+        tepoch.set_postfix(disp=disp_loss_per_image,
+                           error=error_loss_per_image,
                            disc=disc_loss_per_image,
                            scale=scale)
 
@@ -115,8 +121,9 @@ def evaluate_model(model: Module, loader: DataLoader,
             if disc_loss_per_image is not None else None
 
         print(f'{description}:'
-              f'\n\tmodel loss: {model_loss_per_image:.2e}'
+              f'\n\tdisparity loss: {disp_loss_per_image:.2e}'
+              f'\n\terror loss: {error_loss_per_image:.2e}'
               f'\n\tdiscriminator loss: {disc_loss_string}'
               f'\n\tdisparity scale: {scale:.2f}')
 
-    return model_loss_per_image, disc_loss_per_image
+    return disp_loss_per_image, error_loss_per_image, disc_loss_per_image

@@ -179,10 +179,18 @@ class ReprojectionErrorLoss(nn.Module):
 
         super().__init__()
 
-        if loss_type not in ('l1', 'bayesian'):
-            raise ValueError("Loss must be either 'l1' or 'bayesian'.")
+        if loss_type not in ('l1', 'bayesian', 'log_bayesian'):
+            raise ValueError('Loss must be either "l1", "bayesian" '
+                             'or "log_bayesian".')
 
         self.loss_type = loss_type
+
+        if loss_type == 'l1':
+            self.loss_function = self.l1
+        elif loss_type == 'bayesian':
+            self.loss_function = self.bayesian
+        else:
+            self.loss_function = self.log_bayesian
 
         self.smoothness_weight = smoothness_weight
         self.consistency_weight = consistency_weight
@@ -195,6 +203,9 @@ class ReprojectionErrorLoss(nn.Module):
 
     def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return torch.mean((truth / predicted) + torch.log(predicted))
+
+    def log_bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
+        return torch.mean((truth / torch.exp(-predicted)) + predicted) / 2
 
     def l1(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return u.l1_loss(predicted, truth)
@@ -213,8 +224,7 @@ class ReprojectionErrorLoss(nn.Module):
         truth_resized = F.interpolate(truth_mean, size=(height, width),
                                       mode='bilinear', align_corners=True)
 
-        loss = self.l1(predicted, truth_resized) if self.loss_type == 'l1' \
-            else self.bayesian(predicted, truth_resized)
+        loss = self.loss_function(predicted, truth_resized)
 
         smoothness_loss = self.smoothness(predicted, truth) \
             if self.smoothness_weight > 0 else 0
@@ -305,9 +315,12 @@ class ModelLoss(nn.Module):
                                                    recon_pyramid,
                                                    discriminator)
 
-        return reprojection_loss * self.wssim_weight \
+        total_disparity_loss = reprojection_loss * self.wssim_weight \
             + (consistency_loss * self.consistency_weight) \
             + (smoothness_loss * self.smoothness_weight) \
             + (adversarial_loss * self.adversarial_weight) \
             + (perceptual_loss * self.perceptual_weight) \
-            + (error_loss * self.predictive_error_weight)
+        
+        total_error_loss = (error_loss * self.predictive_error_weight)
+
+        return total_disparity_loss, total_error_loss
