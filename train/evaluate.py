@@ -1,5 +1,5 @@
 import os.path
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -40,7 +40,8 @@ def evaluate_model(model: Module, loader: DataLoader,
                    epoch_number: Optional[int] = None,
                    is_final: bool = True,
                    scales: int = 4, device: Device = 'cpu',
-                   no_pbar: bool = False, rank: int = 0) -> float:
+                   no_pbar: bool = False,
+                   rank: int = 0) -> Tuple[float, float]:
 
     running_model_loss = 0
     running_disc_loss = 0

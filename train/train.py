@@ -40,7 +40,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
                     epoch_number: Optional[int] = None,
                     scales: int = 4, perceptual_update_freq: int = 10,
                     device: Device = 'cpu', no_pbar: bool = False,
-                    rank: int = 0) -> float:
+                    rank: int = 0) -> Tuple[float, float]:
     model.train()
 
     if disc is not None:
