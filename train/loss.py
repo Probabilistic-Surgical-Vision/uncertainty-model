@@ -175,7 +175,8 @@ class AdversarialLoss(nn.Module):
 class ReprojectionErrorLoss(nn.Module):
     def __init__(self, loss_type: str = 'l1',
                  smoothness_weight: float = 1.0,
-                 consistency_weight: float = 1.0) -> None:
+                 consistency_weight: float = 1.0,
+                 pooling: bool = False) -> None:
 
         super().__init__()
 
@@ -200,6 +201,9 @@ class ReprojectionErrorLoss(nn.Module):
 
         self.consistency = ConsistencyLoss() \
             if consistency_weight > 0 else None
+        
+        self.pool = nn.AvgPool2d(kernel_size=3, stride=1) \
+            if pooling else nn.Identity()
 
     def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
         return torch.mean((truth / predicted) + torch.log(predicted))
@@ -212,7 +216,6 @@ class ReprojectionErrorLoss(nn.Module):
 
     def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
         left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
-
         left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
 
         # We flip left and right since the right reprojection error
@@ -221,10 +224,13 @@ class ReprojectionErrorLoss(nn.Module):
 
         _, _, height, width = predicted.size()
 
-        truth_resized = F.interpolate(truth_mean, size=(height, width),
-                                      mode='bilinear', align_corners=True)
+        truth = F.interpolate(truth_mean, size=(height, width),
+                              mode='bilinear', align_corners=True)
 
-        loss = self.loss_function(predicted, truth_resized)
+        predicted = self.pool(predicted)
+        truth = self.pool(truth)
+
+        loss = self.loss_function(predicted, truth)
 
         smoothness_loss = self.smoothness(predicted, truth) \
             if self.smoothness_weight > 0 else 0

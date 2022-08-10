@@ -113,4 +113,5 @@ loss:
   error_loss_config:
     loss_type: l1
     smoothness_weight: 0
-    consistency_weight: 0
+    consistency_weight: 0.5
+    pooling: false
