@@ -150,7 +150,7 @@ class AdversarialLoss(nn.Module):
         return self.adversarial(predictions, labels)
 
 
-class ModelLoss(nn.Module):
+class TukraLoss(nn.Module):
     def __init__(self, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,

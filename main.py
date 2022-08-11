@@ -16,7 +16,7 @@ from model import RandomlyConnectedModel, RandomDiscriminator
 
 import train
 from train import train_model
-from train.loss import ModelLoss
+from train.loss import TukraLoss
 import train.utils as u
 
 parser = argparse.ArgumentParser()
@@ -106,7 +106,7 @@ def main(args: argparse.Namespace) -> None:
                             shuffle=False, num_workers=args.workers)
 
     model = RandomlyConnectedModel(**config['model']).to(device)
-    loss_function = ModelLoss(**config['loss']).to(device)
+    loss_function = TukraLoss(**config['loss']).to(device)
 
     model_parameters = sum(p.numel() for p in model.parameters())
     print(f'Model has {model_parameters:,} learnable parameters.'
