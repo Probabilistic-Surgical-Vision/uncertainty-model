@@ -236,7 +236,7 @@ class ReprojectionErrorLoss(nn.Module):
             + (consistency_loss * self.consistency_weight)
 
 
-class ModelLoss(nn.Module):
+class TukraUncertaintyLoss(nn.Module):
     def __init__(self, wssim_weight: float = 1.0,
                  consistency_weight: float = 1.0,
                  smoothness_weight: float = 1.0,
