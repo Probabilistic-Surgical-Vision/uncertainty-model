@@ -65,7 +65,6 @@ def main(args: argparse.Namespace) -> None:
     for key, value in vars(args).items():
         print(f'\t- {key}: {value}')
 
-    val_label = 'test' if args.dataset == 'da-vinci' else 'val'
     dataset_path = os.path.join(args.home, 'datasets', args.dataset)
     dataset_class = DaVinciDataset if args.dataset == 'da-vinci' \
         else SCAREDDataset
@@ -93,7 +92,7 @@ def main(args: argparse.Namespace) -> None:
 
     train_dataset = dataset_class(dataset_path, 'train',
                                   train_transform, args.training_size)
-    val_dataset = dataset_class(dataset_path, val_label,
+    val_dataset = dataset_class(dataset_path, 'test',
                                 no_augment_transform, args.validation_size)
 
     print(f'Dataset size:'
