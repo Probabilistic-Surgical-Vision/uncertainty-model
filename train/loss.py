@@ -201,7 +201,7 @@ class ReprojectionErrorLoss(nn.Module):
 
         self.consistency = ConsistencyLoss() \
             if consistency_weight > 0 else None
-        
+
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1) \
             if pooling else nn.Identity()
 
@@ -321,7 +321,7 @@ class TukraUncertaintyLoss(nn.Module):
             + (smoothness_loss * self.smoothness_weight) \
             + (adversarial_loss * self.adversarial_weight) \
             + (perceptual_loss * self.perceptual_weight) \
-        
+
         total_error_loss = (error_loss * self.predictive_error_weight)
 
         return total_disparity_loss, total_error_loss
