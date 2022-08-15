@@ -11,7 +11,18 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class SCAREDDataset(Dataset):
+    """Dataset class for loading the SCARED images.
 
+    Given the root of the dataset path, this class will find all left and
+    right .png images and collect each pair as a dictionary of Tensors.
+
+    If there are any missing image IDs from either left or right folders,
+    the pair is ignored.
+
+    Note:
+        Transforms must be able to handle dictionaries containing left and
+        right views as separate entries.
+    """
     LEFT_PATH = 'left'
     RIGHT_PATH = 'right'
     EXTENSION = 'png'
@@ -48,6 +59,15 @@ class SCAREDDataset(Dataset):
         self.transform = transform
 
     def __getitem__(self, idx: int) -> Dict[str, Tensor]:
+        """Retrieve a single sample from the dataset.
+
+        Args:
+            idx (int): The index of the sample in the dataset.
+
+        Returns:
+            Dict[str, Tensor]: The left and right images packaged as a
+                dictionary containing `left` and `right` keys.
+        """
         left_path = self.lefts[idx]
         right_path = self.rights[idx]
 

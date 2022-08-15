@@ -11,7 +11,18 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class DaVinciDataset(Dataset):
+    """Dataset class for loading the Hamlyn da Vinci images.
 
+    Given the root of the dataset path, this class will find all left and
+    right .png images and collect each pair as a dictionary of Tensors.
+
+    If there are any missing image IDs from either left or right folders,
+    the pair is ignored.
+
+    Note:
+        Transforms must be able to handle dictionaries containing left and
+        right views as separate entries.
+    """
     LEFT_PATH = 'image_0'
     RIGHT_PATH = 'image_1'
     EXTENSION = 'png'
