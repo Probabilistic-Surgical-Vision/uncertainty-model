@@ -23,6 +23,15 @@ class CityScapesDataset(Dataset):
     Note:
         Transforms must be able to handle dictionaries containing left and
         right views as separate entries.
+
+    Args:
+        root (str): Path to the root of the dataset directory.
+        split (str): The folder in the dataset to use. Must be "train", "val"
+            or "test".
+        transform (Optional[object], optional): The transforms to apply to
+            each image pair while loading. Defaults to None.
+        limit (Optional[int], optional): The maximum number of images to load.
+            Loads all images if None. Defaults to None.
     """
     LEFT_PATH = 'leftImg8bit'
     RIGHT_PATH = 'rightImg8bit'
