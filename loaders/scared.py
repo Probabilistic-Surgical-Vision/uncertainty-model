@@ -14,7 +14,7 @@ class SCAREDDataset(Dataset):
     """Dataset class for loading the SCARED images.
 
     Given the root of the dataset path, this class will find all left and
-    right .png images and collect each pair as a dictionary of Tensors.
+    right `.png` images and collect each pair as a dictionary of Tensors.
 
     If there are any missing image IDs from either left or right folders,
     the pair is ignored.
@@ -22,6 +22,15 @@ class SCAREDDataset(Dataset):
     Note:
         Transforms must be able to handle dictionaries containing left and
         right views as separate entries.
+
+    Args:
+        root (str): Path to the root of the dataset directory.
+        split (str): The folder in the dataset to use. Must be "train" or
+            "test".
+        transform (Optional[object], optional): The transforms to apply to
+            each image pair while loading. Defaults to None.
+        limit (Optional[int], optional): The maximum number of images to load.
+            Loads all images if None. Defaults to None.
     """
     LEFT_PATH = 'left'
     RIGHT_PATH = 'right'
