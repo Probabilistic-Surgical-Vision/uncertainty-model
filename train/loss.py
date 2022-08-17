@@ -11,7 +11,16 @@ from .utils import ImagePyramid
 from . import utils as u
 
 
-class WeightedSSIMError(nn.Module):
+class WeightedSSIMLoss(nn.Module):
+    """Calculate the SSIM/L1 loss between two images.
+
+    Args:
+        alpha (float, optional): The weight of the SSIM Loss in the overall
+            metric (note that L1 weight is equal to 1 - alpha).
+            Defaults to 0.85.
+        k1 (float, optional): The first SSIM factor. Defaults to 0.01.
+        k2 (float, optional): The second SSIM factor. Defaults to 0.03.
+    """
     def __init__(self, alpha: float = 0.85, k1: float = 0.01,
                  k2: float = 0.03) -> None:
 
@@ -27,10 +36,22 @@ class WeightedSSIMError(nn.Module):
 
     @property
     def previous_image_error(self) -> Tensor:
+        """A temporary variable for the last image error calculated."""
         return self.__previous_image_error
 
     def ssim(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the per-pixel SSIM between two images.
 
+        Note:
+            Both images are average-pooled and therefore smaller.
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The SSIM image (reduced in size by pooling).
+        """
         luminance_x = self.pool(x)
         luminance_y = self.pool(y)
 
@@ -52,13 +73,38 @@ class WeightedSSIMError(nn.Module):
         return numerator / denominator
 
     def dssim(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the Structural Dissimilarity (DSSIM) between two images.
+
+        Note:
+            Both images are average-pooled and therefore smaller.
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The per-pixel DSSIM image (reduced in size by pooling).
+        """
         dissimilarity = (1 - self.ssim(x, y)) / 2
         return torch.clamp(dissimilarity, 0, 1)
 
     def l1_error(self, x: Tensor, y: Tensor) -> Tensor:
+        """Calculate the per-pixel L1 Loss between two tensors."""
         return (x - y).abs()
 
     def image_error(self, images: Tensor, recon: Tensor) -> Tensor:
+        """Calculate the per-pixel weighted SSIM error.
+
+        This is given by:
+            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: A stereo image of the WSSIM error.
+        """
         _, _, height, width = images.size()
 
         left_l1_error = self.l1_error(images[:, 0:3], recon[:, 0:3])
@@ -76,6 +122,18 @@ class WeightedSSIMError(nn.Module):
         return (self.alpha * ssim_error) + ((1 - self.alpha) * l1_error)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
+        """Calculate the weighted SSIM loss.
+
+        This is given by:
+            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+
+        Args:
+            x (Tensor): The first image to compare.
+            y (Tensor): The second image to compare.
+
+        Returns:
+            Tensor: The WSSIM loss as a single float.
+        """
         error = self.image_error(images, recon)
         left_error, right_error = torch.split(error, [3, 3], dim=1)
 
@@ -85,37 +143,85 @@ class WeightedSSIMError(nn.Module):
 
 
 class ConsistencyLoss(nn.Module):
+    """Calculate the consistency loss between two disparity images.
+
+    This is achieved by reconstructing each view of the disparity from the
+    opposite image. By comparing the original disparity with the original
+    image, the model learns to output similar disparity maps in both views.
+
+    Based off:
+        https://arxiv.org/abs/1609.03677
+    """
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, disp: Tensor) -> Tensor:
-        left_lr_disp = u.reconstruct_left_image(disp[:, 0:1], disp[:, 1:2])
-        right_lr_disp = u.reconstruct_right_image(disp[:, 1:2], disp[:, 0:1])
+    def forward(self, disp: Tensor,
+                images: Optional[Tensor] = None) -> Tensor:
+        """Calculate the consistency loss of the disparity prediction.
 
-        left_con_loss = u.l1_loss(disp[:, 0:1], left_lr_disp)
-        right_con_loss = u.l1_loss(disp[:, 1:2], right_lr_disp)
+        Args:
+            disp (Tensor): The stereo disparity prediction.
+
+        Returns:
+            Tensor: The consistency loss as a single float.
+        """
+        images = disp if images is None else images
+
+        left_disp, right_disp = torch.split(disp, [1, 1], dim=1)
+        left_image, right_image = torch.split(images, [1, 1], dim=1)
+
+        left_lr_disp = u.reconstruct_left_image(left_disp, right_image)
+        right_lr_disp = u.reconstruct_right_image(right_disp, left_image)
+
+        left_con_loss = u.l1_loss(left_disp, left_lr_disp)
+        right_con_loss = u.l1_loss(right_disp, right_lr_disp)
 
         return torch.sum(left_con_loss + right_con_loss)
 
 
 class SmoothnessLoss(nn.Module):
+    """Calculate the smoothness loss from disparity.
+
+    This loss function penalises the model for predicting noisy or jumpy
+    disparity maps unnecessarily. Regions in the original image with little
+    change in RGB are weighted higher, and multiplied by the gradient in
+    disparity.
+
+    Therefore, the loss function only penalises jagged disparity when there
+    is no indication of a line or edge in the original image.
+
+    Based off:
+        https://arxiv.org/abs/1609.03677
+    """
     def __init__(self) -> None:
         super().__init__()
 
     def gradient_x(self, x: Tensor) -> Tensor:
+        """Calculate the image gradient along x."""
         # Pad input to keep output size consistent
         x = F.pad(x, (0, 1, 0, 0), mode='replicate')
         return x[:, :, :, :-1] - x[:, :, :, 1:]
 
     def gradient_y(self, x: Tensor) -> Tensor:
+        """Calculate the image gradient along y."""
         # Pad input to keep output size consistent
         x = F.pad(x, (0, 0, 0, 1), mode='replicate')
         return x[:, :, :-1, :] - x[:, :, 1:, :]
 
     def smoothness_weights(self, image_gradient: Tensor) -> Tensor:
+        """Evaluate the weightings according the original image gradient."""
         return torch.exp(-image_gradient.abs().mean(dim=1, keepdim=True))
 
-    def loss(self, disparity: Tensor, image: Tensor) -> Tensor:
+    def smoothness_error(self, disparity: Tensor, image: Tensor) -> Tensor:
+        """Calculate the smoothness loss between an image and the disparity.
+
+        Args:
+            disparity (Tensor): The (single-channel) disparity of the image.
+            image (Tensor): The original image used to predict disparity.
+
+        Returns:
+            Tensor: The per-pixel smoothness loss of the disparity image.
+        """
         disp_grad_x = self.gradient_x(disparity)
         disp_grad_y = self.gradient_y(disparity)
 
@@ -131,19 +237,49 @@ class SmoothnessLoss(nn.Module):
         return smoothness_x.abs() + smoothness_y.abs()
 
     def forward(self, disp: Tensor, images: Tensor) -> Tensor:
-        smooth_left_loss = self.loss(disp[:, 0:1], images[:, 0:3])
-        smooth_right_loss = self.loss(disp[:, 1:2], images[:, 3:6])
+        """Calculate the smoothness loss between the images and disparities.
+
+        Args:
+            disp (Tensor): The stereo disparity prediction.
+            images (Tensor): The original stereo images.
+
+        Returns:
+            Tensor: The smoothness loss as a single float.
+        """
+        left_disp, right_disp = torch.split(disp, [1, 1], dim=1)
+        left_image, right_image = torch.split(images, [3, 3], dim=1)
+
+        smooth_left_loss = self.smoothness_error(left_disp, left_image)
+        smooth_right_loss = self.smoothness_error(right_disp, right_image)
 
         return torch.mean(smooth_left_loss + smooth_right_loss)
 
 
 class PerceptualLoss(nn.Module):
+    """Calculate the discriminator feature reconstruction loss.
+
+    This loss compares the reconstructed and original images by calculating
+    the L1 Loss between their respective feature maps at each encoder stage
+    of the discriminator.
+
+    Based off:
+        https://tinyurl.com/23jb9tnz
+    """
     def __init__(self) -> None:
         super().__init__()
 
     def forward(self, image_pyramid: ImagePyramid,
                 recon_pyramid: ImagePyramid, disc: Module) -> Tensor:
+        """Calculate the perceptual loss of the reconstructed images.
 
+        Args:
+            image_pyramid (ImagePyramid): The original stereo images.
+            recon_pyramid (ImagePyramid): The reconstructed stereo images.
+            disc (Module): The discriminator model to use.
+
+        Returns:
+            Tensor: The total perceptual loss as a single float.
+        """
         perceptual_loss = 0
 
         image_maps = disc.features(image_pyramid)
@@ -155,24 +291,55 @@ class PerceptualLoss(nn.Module):
         return perceptual_loss
 
 
-class AdversarialLoss(nn.Module):
+class GeneratorLoss(nn.Module):
+    """Calculate the loss from failing to create realistic looking images.
+
+    The Generator needs to learn to convince the Discriminator that its
+    reconstructed images are real.
+
+    Therefore, the ground truth values must all be one. The model is then
+    trained on either binary cross-entropy or mean-squared error.
+    """
     def __init__(self, loss: str = 'mse') -> None:
         super().__init__()
 
         self.adversarial = nn.MSELoss() \
             if loss == 'mse' else nn.BCELoss()
 
-    def forward(self, recon_pyramid: ImagePyramid, discriminator: Module,
-                is_fake: bool = True) -> Tensor:
+    def forward(self, recon_pyramid: ImagePyramid,
+                discriminator: Module) -> Tensor:
+        """Calculate the generator loss from the reconstructed images.
 
+        Args:
+            recon_pyramid (ImagePyramid): The reconstructed stereo images.
+            discriminator (Module): The discriminator.
+
+        Returns:
+            Tensor: The generator loss as a single float.
+        """
         predictions = discriminator(recon_pyramid)
-        labels = torch.zeros_like(predictions) \
-            if is_fake else torch.ones_like(predictions)
+        labels = torch.ones_like(predictions)
 
         return self.adversarial(predictions, labels)
 
 
 class ReprojectionErrorLoss(nn.Module):
+    """Calculate the loss of the uncertainty estimation channels.
+
+    Args:
+        loss_type (str, optional): The loss function to use for direct
+            comparison between the predicted and true reprojection error.
+            This must be either `l1`, `bayesian` or `log_bayesian`.
+            Defaults to 'l1'.
+        smoothness_weight (float, optional): The weight of the smoothness loss
+            of the uncertainty prediction, relative to the direct comparison
+            loss. Defaults to 1.0.
+        consistency_weight (float, optional): The weight of the LR Consistency
+            loss of the uncertainty prediction, relative to the direct
+            comparison loss. Defaults to 1.0.
+        pooling (bool, optional): Apply average pooling to all tensors before
+            evaluating. Defaults to False.
+    """
     def __init__(self, loss_type: str = 'l1',
                  smoothness_weight: float = 1.0,
                  consistency_weight: float = 1.0,
@@ -205,31 +372,43 @@ class ReprojectionErrorLoss(nn.Module):
         self.pool = nn.AvgPool2d(kernel_size=3, stride=1) \
             if pooling else nn.Identity()
 
-    def bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        return torch.mean((truth / predicted) + torch.log(predicted))
+    def bayesian(self, predicted: Tensor, error: Tensor) -> Tensor:
+        """Calculate the loss by maximising log-likelihood, assuming the
+            model is predicting sigma ** 2.
+        """
+        return torch.mean((error / predicted) + torch.log(predicted))
 
-    def log_bayesian(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        return torch.mean((truth / torch.exp(-predicted)) + predicted) / 2
+    def log_bayesian(self, predicted: Tensor, error: Tensor) -> Tensor:
+        """Calculate the loss by maximising log-likelihood, assuming the
+            model is predicting log(sigma ** 2).
+        """
+        return torch.mean((error / torch.exp(-predicted)) + predicted) / 2
 
-    def l1(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        return u.l1_loss(predicted, truth)
+    def l1(self, predicted: Tensor, error: Tensor) -> Tensor:
+        """Calculate the loss using using the L1 error."""
+        return u.l1_loss(predicted, error)
 
-    def forward(self, predicted: Tensor, truth: Tensor) -> Tensor:
-        left, right = torch.split(truth.detach().clone(), [3, 3], dim=1)
+    def forward(self, predicted: Tensor, image: Tensor, error: Tensor) -> Tensor:
+        error = error.detach().clone()
+
+        left, right = torch.split(error, [3, 3], dim=1)
         left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
-
         # We flip left and right since the right reprojection error
         # is given by the left disparity and vice-versa
-        truth = torch.cat((right, left), dim=1)
+        error = torch.cat((right, left), dim=1)
 
         predicted = self.pool(predicted)
-        truth = self.pool(truth)
 
-        loss = self.loss_function(predicted, truth)
+        disparity, uncertainty = torch.split(predicted, [2, 2], dim=1)
 
-        smoothness_loss = self.smoothness(predicted, truth) \
+        image = self.pool(image)
+        error = self.pool(error)
+
+        loss = self.loss_function(uncertainty, error)
+
+        smoothness_loss = self.smoothness(uncertainty, image) \
             if self.smoothness_weight > 0 else 0
-        consistency_loss = self.consistency(predicted) \
+        consistency_loss = self.consistency(uncertainty, disparity) \
             if self.consistency_weight > 0 else 0
 
         return loss + (smoothness_loss * self.smoothness_weight) \
@@ -250,12 +429,12 @@ class TukraUncertaintyLoss(nn.Module):
 
         super().__init__()
 
-        self.wssim = WeightedSSIMError(wssim_alpha)
+        self.wssim = WeightedSSIMLoss(wssim_alpha)
 
         self.consistency = ConsistencyLoss()
         self.smoothness = SmoothnessLoss()
 
-        self.adversarial = AdversarialLoss(adversarial_loss_type)
+        self.adversarial = GeneratorLoss(adversarial_loss_type)
         self.perceptual = PerceptualLoss()
 
         if error_loss_config is None:
@@ -280,7 +459,7 @@ class TukraUncertaintyLoss(nn.Module):
         return self.__reprojection_errors
 
     def forward(self, image_pyramid: ImagePyramid,
-                disparities: Tuple[Tensor, ...],
+                predictions: ImagePyramid,
                 recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
 
@@ -294,19 +473,19 @@ class TukraUncertaintyLoss(nn.Module):
 
         error_loss = 0
 
-        scales = zip(image_pyramid, disparities, recon_pyramid)
+        scales = zip(image_pyramid, predictions, recon_pyramid)
 
-        for i, (images, disparity, recon_images) in enumerate(scales):
-            disparity, uncertainty = torch.split(disparity, [2, 2], dim=1)
+        for i, (images, prediction, recon_images) in enumerate(scales):
+            disparity, _ = torch.split(prediction, [2, 2], dim=1)
 
             reprojection_loss += self.wssim(images, recon_images)
             consistency_loss += self.consistency(disparity)
             smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
-            reprojection_err = self.wssim.previous_image_error
-            self.reprojection_errors.append(reprojection_err)
+            image_error = self.wssim.previous_image_error
+            self.reprojection_errors.append(image_error)
 
-            error_loss += self.predictive_error(uncertainty, reprojection_err)
+            error_loss += self.predictive_error(prediction, images, image_error)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(recon_pyramid, discriminator)
