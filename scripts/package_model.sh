@@ -1,4 +1,4 @@
-find . -not \( 
+find . -not \( \
     -name ".DS_Store" \
     -or -path "./.git*" \
     -or -path "./.ipynb_checkpoints*" \

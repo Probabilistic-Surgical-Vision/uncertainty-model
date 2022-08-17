@@ -1,6 +1,6 @@
 #!/bin/bash
 
-find . -not \(
+find . -not \( \
     -path "./.git*" 
     -or -path "./.gradient*" 
     -or -name "." 
