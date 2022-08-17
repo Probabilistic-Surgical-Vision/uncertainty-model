@@ -389,6 +389,17 @@ class ReprojectionErrorLoss(nn.Module):
         return u.l1_loss(predicted, error)
 
     def forward(self, predicted: Tensor, image: Tensor, error: Tensor) -> Tensor:
+        """Calculate the uncertainty loss.
+
+        Args:
+            predicted (Tensor): The model's disparity and uncertainty
+                prediction as a 4-channel image.
+            image (Tensor): The original stereo images.
+            error (Tensor): The stereo reprojection error.
+
+        Returns:
+            Tensor: The reprojection error loss as a single float.
+        """
         error = error.detach().clone()
 
         left, right = torch.split(error, [3, 3], dim=1)
@@ -426,7 +437,45 @@ class TukraUncertaintyLoss(nn.Module):
                  perceptual_start: int = 5,
                  adversarial_loss_type: str = 'mse',
                  error_loss_config: Optional[dict] = None) -> None:
+        """Calculate the total loss of the uncertainty model.
 
+        For each scale of the pyramid, the loss is calculated for:
+        - Reconstruction.
+        - Smoothness.
+        - Consistency.
+        - Predictive Uncertainty.
+
+        If adversarial, these are also calculated:
+        - Generator Loss.
+        - Discriminator Feature Reconstruction.
+
+        Code adapted from:
+            https://tinyurl.com/23jb9tnz
+
+        Args:
+            wssim_weight (float, optional): The weight of the reprojection loss.
+                Defaults to 1.0.
+            consistency_weight (float, optional): The weight of the consistency
+                loss. Defaults to 1.0.
+            smoothness_weight (float, optional): The weight of the smooothness
+                loss. Defaults to 1.0.
+            adversarial_weight (float, optional): The weight of the generator
+                loss. Defaults to 0.85.
+            predictive_error_weight (float, optional): The weight of the
+                reprojection error loss. Defaults to 1.0.
+            perceptual_weight (float, optional): The weight of the discriminator
+                feature reconstruction loss. Defaults to 0.05.
+            wssim_alpha (float, optional): The weight of SSIM to L1 Loss within
+                the reprojection loss. Defaults to 0.85.
+            perceptual_start (int, optional): The epoch number to begin
+                calculating the discriminator feature reconstruction loss.
+                Defaults to 5.
+            adversarial_loss_type (str, optional): The type of loss function to
+                use for the generator loss. Defaults to 'mse'.
+            error_loss_config (Optional[dict], optional): The config
+                dictionary for the reprojection error loss function. Defaults
+                to None.
+        """
         super().__init__()
 
         self.wssim = WeightedSSIMLoss(wssim_alpha)
@@ -456,13 +505,28 @@ class TukraUncertaintyLoss(nn.Module):
 
     @property
     def reprojection_errors(self) -> List[Tensor]:
+        """The pyramid of per-pixel image errors."""
         return self.__reprojection_errors
 
     def forward(self, image_pyramid: ImagePyramid,
                 predictions: ImagePyramid,
                 recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
                 discriminator: Optional[Module] = None) -> Tensor:
+        """Calculate the total loss of the model.
 
+        Args:
+            image_pyramid (ImagePyramid): The original stereo images.
+            predictions (ImagePyramid): The model disparity and uncertainty
+                predictions.
+            recon_pyramid (ImagePyramid): The reconstructed stereo images.
+            epoch (Optional[int], optional): The training epoch (for
+                perceptual start). Defaults to None.
+            discriminator (Optional[Module], optional): The discriminator (if
+                applicable). Defaults to None.
+
+        Returns:
+            Tensor: The total loss as a single float.
+        """
         self.__reprojection_errors = []
 
         reprojection_loss = 0
