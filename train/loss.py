@@ -85,7 +85,7 @@ class WeightedSSIMLoss(nn.Module):
         """Calculate the weighted SSIM loss.
 
         This is given by:
-            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+            loss = ((alpha / 2) * DSSIM) + ((1 - alpha) * L1)
 
         Args:
             x (Tensor): The first image to compare.
@@ -103,7 +103,7 @@ class WeightedSSIMLoss(nn.Module):
         ssim_loss = torch.mean(left_ssim_loss + right_ssim_loss)
         l1_loss = left_l1_loss + right_l1_loss
 
-        return (self.alpha * ssim_loss) + ((1 - self.alpha) * l1_loss)
+        return ((self.alpha / 2) * ssim_loss) + ((1 - self.alpha) * l1_loss)
 
 
 class ConsistencyLoss(nn.Module):
