@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
@@ -96,7 +96,7 @@ class WeightedSSIMLoss(nn.Module):
         """Calculate the per-pixel weighted SSIM error.
 
         This is given by:
-            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+            loss = ((alpha / 2) * DSSIM) + ((1 - alpha) * L1)
 
         Args:
             x (Tensor): The first image to compare.
@@ -119,13 +119,13 @@ class WeightedSSIMLoss(nn.Module):
         ssim_error = F.interpolate(ssim_error, size=(height, width),
                                    mode='bilinear', align_corners=True)
 
-        return (self.alpha * ssim_error) + ((1 - self.alpha) * l1_error)
+        return ((self.alpha / 2) * ssim_error) + ((1 - self.alpha) * l1_error)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
         """Calculate the weighted SSIM loss.
 
         This is given by:
-            loss = (alpha * DSSIM) + ((1 - alpha) * L1)
+            loss = ((alpha / 2) * DSSIM) + ((1 - alpha) * L1)
 
         Args:
             x (Tensor): The first image to compare.
@@ -388,7 +388,8 @@ class ReprojectionErrorLoss(nn.Module):
         """Calculate the loss using using the L1 error."""
         return u.l1_loss(predicted, error)
 
-    def forward(self, predicted: Tensor, image: Tensor, error: Tensor) -> Tensor:
+    def forward(self, predicted: Tensor, image: Tensor,
+                error: Tensor) -> Tensor:
         """Calculate the uncertainty loss.
 
         Args:
@@ -453,8 +454,8 @@ class TukraUncertaintyLoss(nn.Module):
             https://tinyurl.com/23jb9tnz
 
         Args:
-            wssim_weight (float, optional): The weight of the reprojection loss.
-                Defaults to 1.0.
+            wssim_weight (float, optional): The weight of the reprojection
+                loss. Defaults to 1.0.
             consistency_weight (float, optional): The weight of the consistency
                 loss. Defaults to 1.0.
             smoothness_weight (float, optional): The weight of the smooothness
@@ -463,8 +464,8 @@ class TukraUncertaintyLoss(nn.Module):
                 loss. Defaults to 0.85.
             predictive_error_weight (float, optional): The weight of the
                 reprojection error loss. Defaults to 1.0.
-            perceptual_weight (float, optional): The weight of the discriminator
-                feature reconstruction loss. Defaults to 0.05.
+            perceptual_weight (float, optional): The weight of the
+                discriminator feature reconstruction loss. Defaults to 0.05.
             wssim_alpha (float, optional): The weight of SSIM to L1 Loss within
                 the reprojection loss. Defaults to 0.85.
             perceptual_start (int, optional): The epoch number to begin
@@ -549,7 +550,8 @@ class TukraUncertaintyLoss(nn.Module):
             image_error = self.wssim.previous_image_error
             self.reprojection_errors.append(image_error)
 
-            error_loss += self.predictive_error(prediction, images, image_error)
+            error_loss += self.predictive_error(prediction, images,
+                                                image_error)
 
         if discriminator is not None:
             adversarial_loss += self.adversarial(recon_pyramid, discriminator)
