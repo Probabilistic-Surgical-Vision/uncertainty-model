@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
+from torch.nn.parallel import DistributedDataParallel
 
 from .utils import ImagePyramid
 
@@ -237,8 +238,14 @@ class PerceptualLoss(nn.Module):
         """
         perceptual_loss = 0
 
-        image_maps = disc.features(image_pyramid)
-        recon_maps = disc.features(recon_pyramid)
+        # Disc methods are accessed from module attr in DDP
+        if isinstance(disc, DistributedDataParallel):
+            image_maps = disc.module.features(image_pyramid)
+            recon_maps = disc.module.features(recon_pyramid)
+        else:
+            image_maps = disc.features(image_pyramid)
+            recon_maps = disc.features(recon_pyramid)
+            
 
         for image_map, recon_map in zip(image_maps, recon_maps):
             perceptual_loss += u.l1_loss(image_map, recon_map)
