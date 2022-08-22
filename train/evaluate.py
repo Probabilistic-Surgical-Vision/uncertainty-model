@@ -10,6 +10,8 @@ from torchvision.utils import save_image
 
 import tqdm
 
+from .loss import WeightedSSIMLoss
+
 from . import utils as u
 from .utils import Device
 
@@ -97,23 +99,29 @@ def evaluate_model(model: Module, loader: DataLoader,
     tepoch = tqdm.tqdm(loader, description, unit='batch',
                        disable=(no_pbar or rank > 0))
 
+    model.eval()
+    val_loss_function = WeightedSSIMLoss()
+
     for i, image_pair in enumerate(tepoch):
         left = image_pair['left'].to(device)
         right = image_pair['right'].to(device)
 
         images = torch.cat([left, right], dim=1)
-        image_pyramid = u.scale_pyramid(images, scales)
+        disparity = model(left, scale)
+        left_disp, right_disp = torch.split(disparity, [1, 1], dim=1)
+        left_recon = u.reconstruct_left_image(left_disp, right)
+        right_recon = u.reconstruct_right_image(right_disp, left)
 
-        disparities = model(left, scale)
+        recon = torch.cat((left_recon, right_recon), dim=1)
 
-        recon_pyramid = u.reconstruct_pyramid(disparities, image_pyramid)
-        model_loss = loss_function(image_pyramid, disparities,
-                                   recon_pyramid, i, disc)
+        model_loss = val_loss_function.forward(images, recon)
 
+        """
         if disc is not None:
             disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
                                             disc, disc_loss_function,
                                             batch_size)
+        """
 
         if rank > 0:
             continue
@@ -121,18 +129,20 @@ def evaluate_model(model: Module, loader: DataLoader,
         running_model_loss += model_loss.item()
         model_loss_per_image = running_model_loss / ((i+1) * batch_size)
 
+        """
         if disc is not None:
             running_disc_loss += disc_loss.item()
             disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
+        """
 
         tepoch.set_postfix(loss=model_loss_per_image,
                            disc=disc_loss_per_image,
                            scale=scale)
 
         if save_evaluation_to is not None and i == 0:
-            save_comparison(image_pyramid[0][0], disparities[0][0],
-                            recon_pyramid[0][0], save_evaluation_to,
-                            epoch_number, is_final, device)
+            save_comparison(images[0], disparity[0], recon[0],
+                            save_evaluation_to, epoch_number,
+                            is_final, device)
 
     if no_pbar and rank == 0:
         disc_loss_string = f'{disc_loss_per_image:.2e}' \
