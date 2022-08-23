@@ -18,6 +18,21 @@ from .utils import Device
 Loss = List[float]
 
 
+def adjust_learning_rate(optimizer, epoch, learning_rate):
+    """Sets the learning rate to the initial LR
+    decayed by 2 every 10 epochs after 30 epoches.
+    """
+
+    if epoch >= 30 and epoch < 40:
+        lr = learning_rate / 2
+    elif epoch >= 40:
+        lr = learning_rate / 4
+    else:
+        lr = learning_rate
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+
+
 def save_model(model: Module, save_model_to: str,
                disc: Optional[Module] = None,
                epoch_number: Optional[int] = None,
@@ -223,13 +238,14 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     disc_optimiser = Adam(disc.parameters(), learning_rate) \
         if disc is not None else None
 
-    scheduler = StepLR(model_optimiser, scheduler_step_size,
-                       scheduler_decay_rate)
+    #scheduler = StepLR(model_optimiser, scheduler_step_size,
+    #                   scheduler_decay_rate)
 
     training_losses = []
     validation_metrics = []
 
     for i in range(epochs):
+        adjust_learning_rate(model_optimiser, i, learning_rate)
         scale = 1 if finetune else u.adjust_disparity_scale(epoch=i)
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
@@ -241,7 +257,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         if rank == 0:
             training_losses.append(loss)
 
-        scheduler.step()
+        #scheduler.step()
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
             metrics = evaluate_model(model, val_loader, save_evaluation_to,
