@@ -166,7 +166,7 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
 
         print(f'{description}:'
               f'\n\tdisparity loss: {disp_loss_per_image:.2e}'
-              f'\n\terror loss: {unc_loss_per_image:.2e}'
+              f'\n\tuncertainty loss: {unc_loss_per_image:.2e}'
               f'\n\tdiscriminator loss: {disc_loss_string}'
               f'\n\tdisparity scale: {scale:.2f}')
 

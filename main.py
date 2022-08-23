@@ -160,12 +160,12 @@ def main(args: argparse.Namespace) -> None:
                        finetune=(args.finetune_from is not None),
                        device=device, no_pbar=args.no_pbar)
 
-    training_losses, validation_losses = loss
+    training_losses, validation_metrics = loss
 
     if results_directory is not None:
         losses_filepath = os.path.join(results_directory, 'results.json')
 
-        (disp_train_losses, error_train_losses,
+        (disp_train_losses, unc_train_losses,
          disc_train_losses) = zip(*training_losses)
 
         disc_train_losses = disc_train_losses if args.adversarial else None
@@ -176,14 +176,14 @@ def main(args: argparse.Namespace) -> None:
             'losses': {
                 'training': {
                     'disparity': disp_train_losses,
-                    'uncertainty': error_train_losses,
+                    'uncertainty': unc_train_losses,
                     'discriminator': disc_train_losses
                 }
             }
         }
 
-        if len(validation_losses) > 0:
-            ssims, spars = zip(*validation_losses)
+        if len(validation_metrics) > 0:
+            ssims, spars = zip(*validation_metrics)
             left_ssim, right_ssim = zip(*ssims)
             ause, aurg = zip(*spars)
 
