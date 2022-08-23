@@ -104,7 +104,7 @@ class WeightedSSIMLoss(nn.Module):
         ssim_loss = torch.mean(left_ssim_loss + right_ssim_loss)
         l1_loss = left_l1_loss + right_l1_loss
 
-        return ((self.alpha / 2) * ssim_loss) + ((1 - self.alpha) * l1_loss)
+        return (self.alpha * ssim_loss) + ((1 - self.alpha) * l1_loss)
 
 
 class ConsistencyLoss(nn.Module):
@@ -245,7 +245,6 @@ class PerceptualLoss(nn.Module):
         else:
             image_maps = disc.features(image_pyramid)
             recon_maps = disc.features(recon_pyramid)
-            
 
         for image_map, recon_map in zip(image_maps, recon_maps):
             perceptual_loss += u.l1_loss(image_map, recon_map)

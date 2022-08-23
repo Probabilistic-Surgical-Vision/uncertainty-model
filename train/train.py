@@ -148,8 +148,8 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
             disc_clone.load_state_dict(disc.state_dict())
 
         if rank == 0:
-            tepoch.set_postfix(model=model_loss_per_image,
-                               disc=disc_loss_per_image,
+            tepoch.set_postfix(disc=disc_loss_per_image,
+                               disp=model_loss_per_image,
                                scale=scale)
 
     if no_pbar and rank == 0:
@@ -157,8 +157,8 @@ def train_one_epoch(model: Module, loader: DataLoader, loss_function: Module,
             if disc_loss_per_image is not None else None
 
         print(f'{description}:'
-              f'\n\tmodel loss: {model_loss_per_image:.2e}'
               f'\n\tdiscriminator loss: {disc_loss_string}'
+              f'\n\tdisparity loss: {model_loss_per_image:.2e}'
               f'\n\tdisparity scale: {scale:.2f}')
 
     return model_loss_per_image, disc_loss_per_image
@@ -227,7 +227,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                        scheduler_decay_rate)
 
     training_losses = []
-    validation_losses = []
+    validation_metrics = []
 
     for i in range(epochs):
         scale = 1 if finetune else u.adjust_disparity_scale(epoch=i)
@@ -244,13 +244,13 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         scheduler.step()
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
-            loss = evaluate_model(model, val_loader, save_evaluation_to,
-                                  epoch_number=(i+1), is_final=False,
-                                  scale=scale, no_pbar=no_pbar,
-                                  device=device, rank=rank)
+            metrics = evaluate_model(model, val_loader, save_evaluation_to,
+                                     epoch_number=(i+1), is_final=False,
+                                     scale=scale, no_pbar=no_pbar,
+                                     device=device, rank=rank)
 
             if rank == 0:
-                validation_losses.append(loss)
+                validation_metrics.append(metrics)
 
         if save_every is not None and (i+1) % save_every == 0 and rank == 0:
             save_model(model, save_model_to, disc,
@@ -262,4 +262,4 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
     if save_model_to is not None and rank == 0:
         save_model(model, save_model_to, is_final=True)
 
-    return training_losses, validation_losses
+    return training_losses, validation_metrics

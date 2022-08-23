@@ -160,7 +160,7 @@ def main(args: argparse.Namespace) -> None:
                        finetune=(args.finetune_from is not None),
                        device=device, no_pbar=args.no_pbar)
 
-    training_losses, validation_losses = loss
+    training_losses, validation_metrics = loss
 
     if results_directory is not None:
         losses_filepath = os.path.join(results_directory, 'results.json')
@@ -179,14 +179,15 @@ def main(args: argparse.Namespace) -> None:
             }
         }
 
-        if len(validation_losses) > 0:
-            model_val_losses, disc_val_losses = zip(*validation_losses)
-            disc_val_losses = disc_val_losses if args.adversarial else None
+        if len(validation_metrics) > 0:
+            left_ssim, right_ssim = zip(*validation_metrics)
 
             results_dict['losses'].update({
                 'validation': {
-                    'model': model_val_losses,
-                    'discriminator': disc_val_losses
+                    'ssim': {
+                        'left': left_ssim,
+                        'right': right_ssim
+                    }
                 }
             })
 

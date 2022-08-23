@@ -135,8 +135,8 @@ def evaluate_model(model: Module, loader: DataLoader,
 
     if no_pbar and rank == 0:
         print(f'{description}:'
-              f'\n\tLeft SSIM: {average_left_ssim:.2f}'
-              f'\n\tRight SSIM: {average_right_ssim:.2f}'
-              f'\n\tDisparity scale: {scale:.2f}')
+              f'\n\tleft ssim: {average_left_ssim:.2f}'
+              f'\n\tright ssim: {average_right_ssim:.2f}'
+              f'\n\tdisparity scale: {scale:.2f}')
 
     return average_left_ssim, average_right_ssim
