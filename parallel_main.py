@@ -240,16 +240,20 @@ def main(gpu_index: int, args: argparse.Namespace) -> None:
         }
 
         if len(validation_losses) > 0:
-            (disp_val_losses, error_val_losses,
-             disc_val_losses) = zip(*validation_losses)
-
-            disc_val_losses = disc_val_losses if args.adversarial else None
+            ssims, spars = zip(*validation_losses)
+            left_ssim, right_ssim = zip(*ssims)
+            ause, aurg = zip(*spars)
 
             results_dict['losses'].update({
                 'validation': {
-                    'disparity': disp_val_losses,
-                    'uncertainty': error_val_losses,
-                    'discriminator': disc_val_losses
+                    'ssim': {
+                        'left': left_ssim,
+                        'right': right_ssim
+                    },
+                    'sparsification': {
+                        'ause': ause,
+                        'aurg': aurg
+                    },
                 }
             })
 

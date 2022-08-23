@@ -1,10 +1,11 @@
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module
+from torch.nn.parallel import DistributedDataParallel
 
 from .utils import ImagePyramid
 
@@ -110,16 +111,24 @@ class WeightedSSIMLoss(nn.Module):
         left_l1_error = self.l1_error(images[:, 0:3], recon[:, 0:3])
         right_l1_error = self.l1_error(images[:, 3:6], recon[:, 3:6])
 
+        l1_error = torch.cat((left_l1_error, right_l1_error), dim=1)
+
         left_ssim_error = self.dssim(images[:, 0:3], recon[:, 0:3])
         right_ssim_error = self.dssim(images[:, 3:6], recon[:, 3:6])
 
-        l1_error = torch.cat((left_l1_error, right_l1_error), dim=1)
         ssim_error = torch.cat((left_ssim_error, right_ssim_error), dim=1)
-
         ssim_error = F.interpolate(ssim_error, size=(height, width),
                                    mode='bilinear', align_corners=True)
 
-        return ((self.alpha / 2) * ssim_error) + ((1 - self.alpha) * l1_error)
+        total_error = (self.alpha * ssim_error) \
+            + ((1 - self.alpha) * l1_error)
+
+        left_error, right_error = torch.split(total_error, [3, 3], dim=1)
+
+        left_error = left_error.mean(dim=1, keepdim=True)
+        right_error = right_error.mean(dim=1, keepdim=True)
+
+        return torch.cat((left_error, right_error), dim=1)
 
     def forward(self, images: Tensor, recon: Tensor) -> Tensor:
         """Calculate the weighted SSIM loss.
@@ -135,7 +144,7 @@ class WeightedSSIMLoss(nn.Module):
             Tensor: The WSSIM loss as a single float.
         """
         error = self.image_error(images, recon)
-        left_error, right_error = torch.split(error, [3, 3], dim=1)
+        left_error, right_error = torch.split(error, [1, 1], dim=1)
 
         self.__previous_image_error = error
 
@@ -282,8 +291,13 @@ class PerceptualLoss(nn.Module):
         """
         perceptual_loss = 0
 
-        image_maps = disc.features(image_pyramid)
-        recon_maps = disc.features(recon_pyramid)
+        # Disc methods are accessed from module attr in DDP
+        if isinstance(disc, DistributedDataParallel):
+            image_maps = disc.module.features(image_pyramid)
+            recon_maps = disc.module.features(recon_pyramid)
+        else:
+            image_maps = disc.features(image_pyramid)
+            recon_maps = disc.features(recon_pyramid)
 
         for image_map, recon_map in zip(image_maps, recon_maps):
             perceptual_loss += u.l1_loss(image_map, recon_map)
@@ -403,18 +417,11 @@ class ReprojectionErrorLoss(nn.Module):
         """
         error = error.detach().clone()
 
-        left, right = torch.split(error, [3, 3], dim=1)
-        left, right = left.mean(1, keepdim=True), right.mean(1, keepdim=True)
-        # We flip left and right since the right reprojection error
-        # is given by the left disparity and vice-versa
-        error = torch.cat((right, left), dim=1)
-
         predicted = self.pool(predicted)
-
-        disparity, uncertainty = torch.split(predicted, [2, 2], dim=1)
-
         image = self.pool(image)
         error = self.pool(error)
+
+        disparity, uncertainty = torch.split(predicted, [2, 2], dim=1)
 
         loss = self.loss_function(uncertainty, error)
 
@@ -502,13 +509,6 @@ class TukraUncertaintyLoss(nn.Module):
 
         self.predictive_error_weight = predictive_error_weight
 
-        self.__reprojection_errors = []
-
-    @property
-    def reprojection_errors(self) -> List[Tensor]:
-        """The pyramid of per-pixel image errors."""
-        return self.__reprojection_errors
-
     def forward(self, image_pyramid: ImagePyramid,
                 predictions: ImagePyramid,
                 recon_pyramid: ImagePyramid, epoch: Optional[int] = None,
@@ -528,8 +528,6 @@ class TukraUncertaintyLoss(nn.Module):
         Returns:
             Tensor: The total loss as a single float.
         """
-        self.__reprojection_errors = []
-
         reprojection_loss = 0
         consistency_loss = 0
         smoothness_loss = 0
@@ -548,8 +546,6 @@ class TukraUncertaintyLoss(nn.Module):
             smoothness_loss += self.smoothness(disparity, images) / (2 ** i)
 
             image_error = self.wssim.previous_image_error
-            self.reprojection_errors.append(image_error)
-
             error_loss += self.predictive_error(prediction, images,
                                                 image_error)
 
