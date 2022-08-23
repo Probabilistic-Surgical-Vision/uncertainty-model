@@ -244,11 +244,10 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
         scheduler.step()
 
         if evaluate_every is not None and (i+1) % evaluate_every == 0:
-            loss = evaluate_model(model, val_loader, loss_function, scale,
-                                  disc, disc_loss_function,
-                                  save_evaluation_to, epoch_number=(i+1),
-                                  device=device, is_final=False,
-                                  no_pbar=no_pbar, rank=rank)
+            loss = evaluate_model(model, val_loader, save_evaluation_to,
+                                  epoch_number=(i+1), is_final=False,
+                                  scale=scale, no_pbar=no_pbar,
+                                  device=device, rank=rank)
 
             if rank == 0:
                 validation_losses.append(loss)

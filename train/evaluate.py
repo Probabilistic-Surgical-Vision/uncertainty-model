@@ -8,9 +8,10 @@ from torch.utils.data import DataLoader
 
 from torchvision.utils import save_image
 
-import tqdm
+from torchmetrics.functional import \
+    structural_similarity_index_measure as ssim
 
-from .loss import WeightedSSIMLoss
+import tqdm
 
 from . import utils as u
 from .utils import Device
@@ -47,14 +48,12 @@ def save_comparison(image: Tensor, disparity: Tensor, recon: Tensor,
 
 @torch.no_grad()
 def evaluate_model(model: Module, loader: DataLoader,
-                   loss_function: Module, scale: float = 1.0,
-                   disc: Optional[Module] = None,
-                   disc_loss_function: Optional[Module] = None,
                    save_evaluation_to: Optional[str] = None,
                    epoch_number: Optional[int] = None,
-                   is_final: bool = True,
-                   scales: int = 4, device: Device = 'cpu',
+                   scale: int = 4, is_final: bool = True,
+                   kernel_size: int = 11,
                    no_pbar: bool = False,
+                   device: Device = 'cpu',
                    rank: int = 0) -> Tuple[float, float]:
     """Loop through the validation set and report model losses.
 
@@ -85,11 +84,11 @@ def evaluate_model(model: Module, loader: DataLoader,
         float: The average model loss per image.
         float: The average discriminator loss per image.
     """
-    running_model_loss = 0
-    running_disc_loss = 0
+    running_left_ssim = 0
+    running_right_ssim = 0
 
-    model_loss_per_image = None
-    disc_loss_per_image = None
+    average_left_ssim = None
+    average_right_ssim = None
 
     batch_size = loader.batch_size \
         if loader.batch_size is not None \
@@ -100,7 +99,6 @@ def evaluate_model(model: Module, loader: DataLoader,
                        disable=(no_pbar or rank > 0))
 
     model.eval()
-    val_loss_function = WeightedSSIMLoss()
 
     for i, image_pair in enumerate(tepoch):
         left = image_pair['left'].to(device)
@@ -112,45 +110,33 @@ def evaluate_model(model: Module, loader: DataLoader,
         left_recon = u.reconstruct_left_image(left_disp, right)
         right_recon = u.reconstruct_right_image(right_disp, left)
 
-        recon = torch.cat((left_recon, right_recon), dim=1)
-
-        model_loss = val_loss_function.forward(images, recon)
-
-        """
-        if disc is not None:
-            disc_loss = u.run_discriminator(image_pyramid, recon_pyramid,
-                                            disc, disc_loss_function,
-                                            batch_size)
-        """
+        left_ssim = ssim(left_recon, left, kernel_size=kernel_size)
+        right_ssim = ssim(right_recon, right, kernel_size=kernel_size)
 
         if rank > 0:
             continue
 
-        running_model_loss += model_loss.item()
-        model_loss_per_image = running_model_loss / ((i+1) * batch_size)
+        running_left_ssim += left_ssim.item()
+        average_left_ssim = running_left_ssim / ((i+1) * batch_size)
 
-        """
-        if disc is not None:
-            running_disc_loss += disc_loss.item()
-            disc_loss_per_image = running_disc_loss / ((i+1) * batch_size)
-        """
+        running_right_ssim += right_ssim.item()
+        average_right_ssim = running_right_ssim / ((i+1) * batch_size)
 
-        tepoch.set_postfix(loss=model_loss_per_image,
-                           disc=disc_loss_per_image,
+        tepoch.set_postfix(left=average_left_ssim,
+                           right=average_right_ssim,
                            scale=scale)
 
         if save_evaluation_to is not None and i == 0:
+            recon = torch.cat((left_recon, right_recon), dim=1)
+
             save_comparison(images[0], disparity[0], recon[0],
                             save_evaluation_to, epoch_number,
                             is_final, device)
 
     if no_pbar and rank == 0:
-        disc_loss_string = f'{disc_loss_per_image:.2e}' \
-            if disc_loss_per_image is not None else None
-
         print(f'{description}:'
-              f'\n\tmodel loss: {model_loss_per_image:.2e}'
-              f'\n\tdiscriminator loss: {disc_loss_string}'
-              f'\n\tdisparity scale: {scale:.2f}')
+              f'\n\tLeft SSIM: {average_left_ssim:.2f}'
+              f'\n\tRight SSIM: {average_right_ssim:.2f}'
+              f'\n\tDisparity scale: {scale:.2f}')
 
-    return model_loss_per_image, disc_loss_per_image
+    return average_left_ssim, average_right_ssim
