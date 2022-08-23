@@ -130,6 +130,7 @@ def evaluate_model(model: Module, loader: DataLoader,
         right = image_pair['right'].to(device)
 
         images = torch.cat([left, right], dim=1)
+
         prediction = model(left, scale)
 
         disparity, uncertainty = torch.split(prediction, [2, 2], dim=1)
@@ -138,8 +139,11 @@ def evaluate_model(model: Module, loader: DataLoader,
         left_recon = u.reconstruct_left_image(left_disp, right)
         right_recon = u.reconstruct_right_image(right_disp, left)
 
-        left_ssim = ssim(left_recon, left, kernel_size=kernel_size)
-        right_ssim = ssim(right_recon, right, kernel_size=kernel_size)
+        left_ssim = ssim(left_recon, left, kernel_size=kernel_size,
+                         reduction='sum', data_range=1.0)
+
+        right_ssim = ssim(right_recon, right, kernel_size=kernel_size,
+                          reduction='sum', data_range=1.0)
 
         recon = torch.cat((left_recon, right_recon), dim=1)
         _, _, height, width = recon.shape
