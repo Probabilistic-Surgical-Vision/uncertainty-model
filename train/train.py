@@ -1,12 +1,11 @@
 import os
 import os.path
 from copy import deepcopy
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import torch
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 
 import tqdm
@@ -16,21 +15,8 @@ from . import utils as u
 from .utils import Device
 
 Loss = List[float]
-
-
-def adjust_learning_rate(optimizer, epoch, learning_rate):
-    """Sets the learning rate to the initial LR
-    decayed by 2 every 10 epochs after 30 epoches.
-    """
-
-    if epoch >= 30 and epoch < 40:
-        lr = learning_rate / 2
-    elif epoch >= 40:
-        lr = learning_rate / 4
-    else:
-        lr = learning_rate
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+LRAdjuster = Callable[[Optimizer, int, float], None]
+ScaleAdjuster = Callable[[int], float]
 
 
 def save_model(model: Module, save_model_to: str,
@@ -183,8 +169,8 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
                 epochs: int, learning_rate: float,
                 disc: Optional[Module] = None,
                 disc_loss_function: Optional[Module] = None,
-                scheduler_decay_rate: float = 0.1,
-                scheduler_step_size: int = 15,
+                adjust_learning_rate: LRAdjuster = u.adjust_learning_rate,
+                adjust_disparity: ScaleAdjuster = u.adjust_disparity,
                 perceptual_update_freq: int = 10,
                 val_loader: Optional[DataLoader] = None,
                 evaluate_every: Optional[int] = None,
@@ -246,7 +232,7 @@ def train_model(model: Module, loader: DataLoader, loss_function: Module,
 
     for i in range(epochs):
         adjust_learning_rate(model_optimiser, i, learning_rate)
-        scale = 1 if finetune else u.adjust_disparity_scale(epoch=i)
+        scale = 1 if finetune else adjust_disparity(i)
 
         loss = train_one_epoch(model, loader, loss_function, model_optimiser,
                                scale, disc, disc_optimiser,
