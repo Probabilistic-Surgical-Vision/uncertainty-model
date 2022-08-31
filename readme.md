@@ -59,6 +59,8 @@ Within the `train` package, there are modules for:
 
 To create the model, discriminator and loss functions, each class takes in keyword arguments. Therefore, it is possible to unpack a dictionary of the key values into the class constructor.
 
+See the `config.yml` file for how to create the model architecture from kwargs.
+
 To change the loss function used for learning uncertainty, modify `error_loss_config.loss_type` to be either `l1` for absolute error loss, or `bayesian` for the laplacian log-likelihood.
 
 _The names `l1` and `bayesian` should be updated to reflect what their true loss functions are actually calculating._
